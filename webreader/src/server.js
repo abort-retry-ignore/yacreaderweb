@@ -637,6 +637,10 @@ async function renderComicReader(req, res, libraryId, comicId) {
       const [spreadSrcs, setSpreadSrcs] = useState(['', '']);
       const [spreadNaturalSizes, setSpreadNaturalSizes] = useState([{ w: 0, h: 0 }, { w: 0, h: 0 }]);
       const [pageLabel, setPageLabel] = useState('');
+      const [pageOverlay, setPageOverlay] = useState('');
+      const [pageOverlayKey, setPageOverlayKey] = useState(0);
+      const [pageOverlayVisible, setPageOverlayVisible] = useState(false);
+      const [zoomDimmed, setZoomDimmed] = useState(false);
 
       const viewerRef = useRef(null);
 
@@ -687,6 +691,21 @@ async function renderComicReader(req, res, libraryId, comicId) {
       // Load image(s) when page or spread changes
       useEffect(() => {
         let cancelled = false;
+        const overlayLabel = spread && page > 0
+          ? (() => {
+              const pages = getSpreadPages(page);
+              return pages.length === 2 ? pages[0] + '-' + pages[1] : pageLabelFor(pages[0]);
+            })()
+          : pageLabelFor(page);
+
+        setPageOverlay(overlayLabel);
+        setPageOverlayKey(k => k + 1);
+        setPageOverlayVisible(true);
+        setZoomDimmed(false);
+
+        const overlayTimer = setTimeout(() => setPageOverlayVisible(false), 1000);
+        const zoomTimer = setTimeout(() => setZoomDimmed(true), 1000);
+
         if (spread && page > 0) {
           const pages = getSpreadPages(page);
           const label = pages.length === 2 ? pages[0] + '-' + pages[1] : pageLabelFor(pages[0]);
@@ -709,7 +728,11 @@ async function renderComicReader(req, res, libraryId, comicId) {
         }
         // Scroll to top on page change
         if (viewerRef.current) viewerRef.current.scrollTop = 0;
-        return () => { cancelled = true; };
+        return () => {
+          cancelled = true;
+          clearTimeout(overlayTimer);
+          clearTimeout(zoomTimer);
+        };
       }, [page, spread]);
 
       // Persist reading progress per client per comic.
@@ -815,10 +838,20 @@ async function renderComicReader(req, res, libraryId, comicId) {
 
       // Toolbar visibility: pinned always shown, otherwise toggled
       const toolbarShown = toolbarPinned || toolbarVisible;
+      const zoomControlStyle = {
+        position: 'fixed', right: 12, top: '50%', transform: 'translateY(-50%)',
+        zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center',
+        gap: 8, padding: '10px 8px', borderRadius: 999,
+        background: 'rgba(15,23,42,0.88)', border: '1px solid rgba(148,163,184,0.2)',
+        boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
+        opacity: zoomDimmed ? 0.28 : 0.72,
+        transition: 'opacity 200ms ease',
+      };
 
       return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', overflow: 'hidden' } },
         // Toolbar
         h('div', {
+          key: pageOverlayKey,
           style: {
             height: toolbarShown ? '36px' : '0',
             overflow: 'hidden',
@@ -896,16 +929,27 @@ async function renderComicReader(req, res, libraryId, comicId) {
           )
         ),
 
-        // Zoom control (fixed right side)
         h('div', {
           style: {
-            position: 'fixed', right: 12, top: '50%', transform: 'translateY(-50%)',
-            zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: 8, padding: '10px 8px', borderRadius: 999,
-            background: 'rgba(15,23,42,0.88)', border: '1px solid rgba(148,163,184,0.2)',
-            boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
+            position: 'fixed',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            zIndex: 9,
+            opacity: pageOverlayVisible ? 1 : 0,
+            transition: 'opacity 1000ms ease',
+            color: 'rgba(255,255,255,0.28)',
+            textShadow: '0 10px 30px rgba(0,0,0,0.7)',
+            fontSize: 'clamp(72px, 14vw, 180px)',
+            fontWeight: 800,
+            letterSpacing: '-0.05em',
           }
-        },
+        }, pageOverlay),
+
+        // Zoom control (fixed right side)
+        h('div', { style: zoomControlStyle },
           h('button', { onClick: () => setZoom(z => Math.min(300, z + 10)), style: roundBtnStyle }, '+'),
           h('input', {
             type: 'range', min: 100, max: 300, step: 10, value: zoom,
