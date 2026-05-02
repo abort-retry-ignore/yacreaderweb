@@ -1,0 +1,15 @@
+{
+  "name": "yacreader-webreader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal sidecar webreader for YACReaderLibraryServer",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
