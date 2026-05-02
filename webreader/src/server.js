@@ -1,4 +1,6 @@
 const http = require('node:http');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 const { URL } = require('node:url');
 const crypto = require('node:crypto');
 const JSZip = require('jszip');
@@ -6,6 +8,84 @@ const JSZip = require('jszip');
 const PORT = Number.parseInt(process.env.WEBREADER_PORT || '3000', 10);
 const YACR_SERVER_URL = process.env.YACR_SERVER_URL || 'http://localhost:8080';
 const ROOT_FOLDER_ID = '1';
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+
+const APPLE_SPLASH_LINKS = [
+  ['1320x2868.png', 'screen and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)'],
+  ['2868x1320.png', 'screen and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)'],
+  ['1290x2796.png', 'screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)'],
+  ['2796x1290.png', 'screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)'],
+  ['1179x2556.png', 'screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)'],
+  ['2556x1179.png', 'screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)'],
+  ['1170x2532.png', 'screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)'],
+  ['2532x1170.png', 'screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)'],
+  ['1125x2436.png', 'screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)'],
+  ['2436x1125.png', 'screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)'],
+  ['1242x2688.png', 'screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)'],
+  ['2688x1242.png', 'screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)'],
+  ['828x1792.png', 'screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)'],
+  ['1792x828.png', 'screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)'],
+  ['1536x2048.png', 'screen and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)'],
+  ['2048x1536.png', 'screen and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)'],
+  ['1668x2388.png', 'screen and (device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)'],
+  ['2388x1668.png', 'screen and (device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)'],
+  ['1640x2360.png', 'screen and (device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)'],
+  ['2360x1640.png', 'screen and (device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)'],
+  ['2048x2732.png', 'screen and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)'],
+  ['2732x2048.png', 'screen and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)'],
+].map(([fileName, media]) => `<link rel="apple-touch-startup-image" href="/apple-splash/${fileName}" media="${media}" />`).join('\n  ');
+
+const STATIC_CONTENT_TYPES = {
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
+
+function pageHead(title, themeColor = '#08110b') {
+  return `<meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="${themeColor}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Yakweb">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  ${APPLE_SPLASH_LINKS}
+  <title>${title}</title>`;
+}
+
+async function serveStaticAsset(res, assetPath) {
+  const normalized = path.normalize(assetPath).replace(/^\.+[\/\\]/, '');
+  const fullPath = path.join(PUBLIC_DIR, normalized);
+
+  if (!fullPath.startsWith(PUBLIC_DIR)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Forbidden');
+    return true;
+  }
+
+  try {
+    const body = await fs.readFile(fullPath);
+    const ext = path.extname(fullPath);
+    res.writeHead(200, {
+      'Content-Type': STATIC_CONTENT_TYPES[ext] || 'application/octet-stream',
+      'Cache-Control': 'public, max-age=3600'
+    });
+    res.end(body);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return false;
+    }
+    res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(`Failed to load asset: ${error.message}`);
+    return true;
+  }
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -140,9 +220,7 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
   return `<!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>YACReader Webreader</title>
+    ${pageHead('YACReader Yakweb')}
     <style>
       :root {
         color-scheme: dark;
@@ -315,9 +393,14 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
     </style>
   </head>
   <body>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+      }
+    </script>
     <main>
       <aside>
-        <h1>Webreader</h1>
+        <h1>Yakweb</h1>
         <p class="hint">Upstream: ${escapeHtml(YACR_SERVER_URL)}</p>
         <h2>Libraries</h2>
         <ul>${libraryLinks || '<li class="hint">No libraries found</li>'}</ul>
@@ -457,9 +540,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
     const html = `<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title} - Webreader</title>
+  ${pageHead(`${title} - Yakweb`)}
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
     *, *::before, *::after { box-sizing: border-box; }
@@ -470,6 +551,11 @@ async function renderComicReader(req, res, libraryId, comicId) {
 </head>
 <body>
   <div id="app"></div>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    }
+  </script>
   <script type="module">
     import { h, render } from 'https://esm.sh/preact@10.22.0';
     import { useState, useEffect, useRef, useCallback } from 'https://esm.sh/preact@10.22.0/hooks';
@@ -484,6 +570,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
       backUrl: `/libraries/${encodeURIComponent(libraryId)}/folders/1`,
     })};
     const TOOLBAR_KEY = ${JSON.stringify(toolbarStorageKey)};
+    const PROGRESS_KEY = 'yakweb_progress_' + COMIC.libraryId + '_' + COMIC.comicId;
     const INITIAL_PAGE = ${safePage};
     const INITIAL_SPREAD = ${spreadMode ? 'true' : 'false'};
     const INITIAL_ZOOM = ${initialZoomLevel};
@@ -513,9 +600,33 @@ async function renderComicReader(req, res, libraryId, comicId) {
     }
 
     function App() {
-      const [page, setPage] = useState(INITIAL_PAGE);
-      const [spread, setSpread] = useState(INITIAL_SPREAD);
-      const [zoom, setZoom] = useState(INITIAL_ZOOM);
+      const [page, setPage] = useState(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null');
+          if (saved && Number.isInteger(saved.page)) {
+            return Math.max(0, Math.min(saved.page, COMIC.totalDisplayPages - 1));
+          }
+        } catch {}
+        return INITIAL_PAGE;
+      });
+      const [spread, setSpread] = useState(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null');
+          if (saved && typeof saved.spread === 'boolean') {
+            return saved.spread;
+          }
+        } catch {}
+        return INITIAL_SPREAD;
+      });
+      const [zoom, setZoom] = useState(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null');
+          if (saved && Number.isInteger(saved.zoom)) {
+            return Math.max(100, Math.min(saved.zoom, 300));
+          }
+        } catch {}
+        return INITIAL_ZOOM;
+      });
       const [toolbarVisible, setToolbarVisible] = useState(false);
       const [toolbarPinned, setToolbarPinned] = useState(() => {
         try { return localStorage.getItem(TOOLBAR_KEY) === '1'; } catch { return false; }
@@ -528,7 +639,6 @@ async function renderComicReader(req, res, libraryId, comicId) {
       const [pageLabel, setPageLabel] = useState('');
 
       const viewerRef = useRef(null);
-      const pushingUrl = useRef(false);
 
       // Derived spread pages
       function getSpreadPages(p) {
@@ -602,18 +712,41 @@ async function renderComicReader(req, res, libraryId, comicId) {
         return () => { cancelled = true; };
       }, [page, spread]);
 
+      // Persist reading progress per client per comic.
+      useEffect(() => {
+        try {
+          localStorage.setItem(PROGRESS_KEY, JSON.stringify({ page, spread, zoom }));
+        } catch {}
+      }, [page, spread, zoom]);
+
       // Update URL when zoom changes (without pushing history)
       useEffect(() => {
         const url = new URL(window.location);
+        url.searchParams.set('page', String(page));
+        url.searchParams.set('spread', spread ? '1' : '0');
         url.searchParams.set('zoom', String(zoom));
         window.history.replaceState({}, '', url);
-      }, [zoom]);
+      }, [page, spread, zoom]);
 
       // Keyboard shortcuts
       useEffect(() => {
         const onKey = (e) => {
           if (e.key === 'ArrowLeft') prevPage();
           if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextPage(); }
+          if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+            const el = viewerRef.current;
+            if (el) {
+              e.preventDefault();
+              el.scrollBy({ top: -(el.clientHeight * 0.85), behavior: 'smooth' });
+            }
+          }
+          if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+            const el = viewerRef.current;
+            if (el) {
+              e.preventDefault();
+              el.scrollBy({ top: el.clientHeight * 0.85, behavior: 'smooth' });
+            }
+          }
           if (e.key === '+' || e.key === '=') setZoom(z => Math.min(300, z + 10));
           if (e.key === '-') setZoom(z => Math.max(100, z - 10));
           if (e.key.toLowerCase() === 's') setSpread(s => !s);
@@ -951,6 +1084,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/manifest.webmanifest' || url.pathname === '/service-worker.js' || url.pathname === '/icon.svg' || url.pathname === '/apple-touch-icon.png' || url.pathname === '/icon-192.png' || url.pathname === '/icon-512.png' || url.pathname === '/maskable-icon-192.png' || url.pathname === '/maskable-icon-512.png') {
+    const served = await serveStaticAsset(res, url.pathname.slice(1));
+    if (served) return;
+  }
+
+  if (url.pathname.startsWith('/apple-splash/')) {
+    const served = await serveStaticAsset(res, url.pathname.slice(1));
+    if (served) return;
+  }
+
   if (url.pathname === '/') {
     await renderHome(req, res);
     return;
@@ -991,6 +1134,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Webreader listening on port ${PORT}`);
+    console.log(`Yakweb listening on port ${PORT}`);
   console.log(`Using YACReader server ${YACR_SERVER_URL}`);
 });

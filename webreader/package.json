@@ -1,13 +1,14 @@
 {
-  "name": "yacreader-webreader",
+  "name": "yacreader-yakweb",
   "version": "0.1.0",
   "private": true,
-  "description": "Minimal sidecar webreader for YACReaderLibraryServer",
+  "description": "Minimal sidecar Yakweb for YACReaderLibraryServer",
   "scripts": {
     "start": "node src/server.js"
   },
   "dependencies": {
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "pngjs": "^7.0.0"
   },
   "engines": {
     "node": ">=20"

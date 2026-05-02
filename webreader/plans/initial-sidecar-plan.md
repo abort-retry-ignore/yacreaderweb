@@ -1,12 +1,12 @@
-# Webreader Sidecar Plan
+# Yakweb Sidecar Plan
 
 ## Goal
 
-Create a new `webreader` sidecar application that runs in its own Docker container and provides a browser-based UI for reading data from `YACReaderLibraryServer`.
+Create a new `Yakweb` sidecar application that runs in its own Docker container and provides a browser-based UI for reading data from `YACReaderLibraryServer`.
 
 The first milestone is intentionally small:
 
-- start the webreader in its own container
+- start Yakweb in its own container
 - make its HTTP port configurable
 - fetch the list of libraries, folders, and comics from `YACReaderLibraryServer`
 - display that list in a browser
@@ -29,7 +29,7 @@ In scope:
 
 - a new `webreader/` app directory
 - a dedicated Dockerfile for the sidecar
-- environment-based configuration for the webreader port
+- environment-based configuration for the Yakweb port
 - environment-based configuration for the upstream YACReader server URL
 - server-side integration with YACReaderLibraryServer APIs
 - a simple browser UI that lists libraries, folders, and comics
@@ -45,7 +45,7 @@ Out of scope for this milestone:
 
 ## Architecture
 
-The webreader should be a separate service that talks to `YACReaderLibraryServer` over HTTP.
+The Yakweb should be a separate service that talks to `YACReaderLibraryServer` over HTTP.
 
 Required runtime configuration:
 
@@ -55,13 +55,13 @@ Required runtime configuration:
 Recommended container relationship:
 
 - both containers share a Docker network
-- the webreader does not need direct access to `/comics` for the first milestone
-- the webreader uses the upstream API rather than scanning files itself
+- Yakweb does not need direct access to `/comics` for the first milestone
+- Yakweb uses the upstream API rather than scanning files itself
 - the browser should talk only to the sidecar, not directly to YACReader
 
 ## Integration Strategy
 
-The webreader should act as a thin adapter in front of the upstream API.
+Yakweb should act as a thin adapter in front of the upstream API.
 
 Responsibilities of the sidecar:
 
@@ -136,7 +136,7 @@ Preferred sequence:
 1. Create the `webreader/` application skeleton.
 2. Add a config module for `WEBREADER_PORT` and `YACR_SERVER_URL`.
 3. Implement a YACReader API client for library and folder listing, with automatic `x-request-id` handling.
-4. Expose webreader routes such as `/`, `/libraries/:id`, and `/libraries/:id/folders/:folderId`.
+4. Expose Yakweb routes such as `/`, `/libraries/:id`, and `/libraries/:id/folders/:folderId`.
 5. Render a simple list UI in the browser.
 6. Add Docker support and an example compose snippet.
 
@@ -144,7 +144,7 @@ If the first pass stays small, covers can be added as step 7.
 
 ## Docker Requirements
 
-The webreader must run as its own container.
+Yakweb must run as its own container.
 
 Deliverables:
 
