@@ -1,0 +1,27 @@
+services:
+  # yacreaderlibrary-server:
+  #   container_name: YACReaderLibraryServer-dev
+  #   image: xthursdayx/yacreaderlibrary-server-docker:${YACR_TAG:-latest}
+  #   environment:
+  #     PUID: ${PUID:-1000}
+  #     PGID: ${PGID:-1000}
+  #     TZ: ${TZ:-UTC}
+  #   volumes:
+  #     - ${YACR_CONFIG_DIR:-./data/config}:/config
+  #     - ${YACR_COMICS_DIR:-./data/comics}:/comics
+  #   ports:
+  #     - "${YACR_PORT:-18080}:8080"
+  #   restart: unless-stopped
+
+  webreader:
+    container_name: YACReaderWebreader
+    build:
+      context: ./webreader
+    environment:
+      WEBREADER_PORT: ${WEBREADER_INTERNAL_PORT:-3000}
+      YACR_SERVER_URL: ${YACR_SERVER_URL:-http://host.docker.internal:60000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${WEBREADER_PORT:-3100}:${WEBREADER_INTERNAL_PORT:-3000}"
+    restart: unless-stopped
