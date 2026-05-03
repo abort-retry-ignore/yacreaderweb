@@ -36,6 +36,8 @@
   let viewerRef = null;
   let toolbarRef = null;
   let zoomControlsRef = null;
+  let sideArrowLeftRef = null;
+  let sideArrowRightRef = null;
   let pageOverlayRef = null;
   let overlayTimer = null;
   let toolbarTimer = null;
@@ -43,15 +45,8 @@
   let lastPageTurnAt = 0;
   let pointerRevealAnchor = null;
   let lastPointerPosition = null;
+  let lastToolbarShown = null;
   const MIN_LOADING_RING_MS = 250;
-
-  function canAutoRevealToolbar() {
-    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  }
-
-  function usesTouchToolbarToggle() {
-    return !canAutoRevealToolbar();
-  }
 
   function syncToolbarChrome() {
     if (!toolbarRef) return;
@@ -63,9 +58,28 @@
     toolbarRef.style.pointerEvents = visible ? 'auto' : 'none';
   }
 
+  function logToolbarEvent(kind, details = {}) {
+    console.log('[toolbar-state]', {
+      kind,
+      page: state.page,
+      zoom: state.zoom,
+      spread: state.spread,
+      pinned: state.toolbarPinned,
+      visible: state.toolbarVisible,
+      loading: state.isLoadingPage,
+      ...details,
+    });
+  }
+
   function syncZoomControlsOpacity() {
     if (!zoomControlsRef) return;
     zoomControlsRef.style.opacity = state.zoomDimmed ? '0.36' : '0.8';
+  }
+
+  function syncSideArrowOpacity() {
+    const opacity = state.zoomDimmed ? '0' : '0.42';
+    if (sideArrowLeftRef) sideArrowLeftRef.style.opacity = opacity;
+    if (sideArrowRightRef) sideArrowRightRef.style.opacity = opacity;
   }
 
   function syncPageOverlay() {
@@ -84,6 +98,7 @@
     zoomTimer = setTimeout(() => {
       state.zoomDimmed = true;
       syncZoomControlsOpacity();
+      syncSideArrowOpacity();
     }, delay);
   }
 
@@ -91,27 +106,20 @@
     const wasDimmed = state.zoomDimmed;
     state.zoomDimmed = false;
     scheduleZoomFade(delay);
-    if (wasDimmed) syncZoomControlsOpacity();
+    if (wasDimmed) {
+      syncZoomControlsOpacity();
+      syncSideArrowOpacity();
+    }
   }
 
   function scheduleToolbarFade(delay = 1000) {
     clearTimeout(toolbarTimer);
     toolbarTimer = setTimeout(() => {
-      if (state.toolbarPinned) return;
+      if (state.toolbarPinned || !state.toolbarVisible) return;
       state.toolbarVisible = false;
       syncToolbarChrome();
+      logToolbarEvent('hide-applied', { toolbarShown: state.toolbarPinned || state.toolbarVisible });
     }, delay);
-  }
-
-  function revealToolbar(delay = 1000) {
-    if (!canAutoRevealToolbar() || state.isLoadingPage) return;
-    const wasHidden = !state.toolbarPinned && !state.toolbarVisible;
-    if (!state.toolbarPinned) {
-      state.toolbarVisible = true;
-      syncToolbarChrome();
-      scheduleToolbarFade(delay);
-    }
-    if (wasHidden) syncToolbarChrome();
   }
 
   function pageUrl(page) {
@@ -269,11 +277,13 @@
   }
 
   function prevPage() {
+    console.log('[page-advance]', { source: 'prevPage', from: state.page, to: Math.max(0, state.page - (state.spread ? 2 : 1)) });
     state.page = Math.max(0, state.page - (state.spread ? 2 : 1));
     showPage(state.page);
   }
 
   function nextPage() {
+    console.log('[page-advance]', { source: 'nextPage', from: state.page, to: Math.min(COMIC.totalDisplayPages - 1, state.page + (state.spread ? 2 : 1)) });
     state.page = Math.min(COMIC.totalDisplayPages - 1, state.page + (state.spread ? 2 : 1));
     showPage(state.page);
   }
@@ -288,10 +298,7 @@
     if (state.toolbarPinned) {
       state.toolbarVisible = true;
     }
-    if (!state.toolbarPinned) {
-      state.toolbarVisible = false;
-      scheduleToolbarFade(1200);
-    }
+    if (!state.toolbarPinned) state.toolbarVisible = false;
     syncToolbarChrome();
     pushUrl(true);
     render();
@@ -301,7 +308,6 @@
     if (state.toolbarPinned) return;
     state.toolbarVisible = !state.toolbarVisible;
     syncToolbarChrome();
-    if (!usesTouchToolbarToggle() && state.toolbarVisible) scheduleToolbarFade(1000);
     pushUrl(true);
     render();
   }
@@ -317,7 +323,8 @@
     const showSpread = state.spread && state.spreadSrcs[0];
     const imgStyle = showSpread ? {} : computeImgStyle(state.imgNaturalSize.w, state.imgNaturalSize.h);
     const toolbarShown = state.toolbarPinned || state.toolbarVisible;
-    const touchToolbarToggle = !state.toolbarPinned && usesTouchToolbarToggle();
+    const toolbarToggleShown = !state.toolbarPinned && !state.toolbarVisible;
+    const sideArrowOpacity = state.zoomDimmed ? 0 : 0.42;
     const zoomControlStyle = [
       'position:fixed', 'right:12px', 'top:50%', 'transform:translateY(-50%)',
       'z-index:10', 'display:flex', 'flex-direction:column', 'align-items:center',
@@ -330,7 +337,7 @@
 
     app.innerHTML = `
       <div style="display:flex;flex-direction:column;height:100vh;background:#000;overflow:hidden">
-        <div id="toolbar" style="height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;flex-shrink:0;transition:height 160ms ease, opacity 200ms ease;background:rgba(15,23,42,0.96);border-bottom:${toolbarShown ? '1px solid #334155' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};">
+        <div id="toolbar" style="position:fixed;top:0;left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:rgba(15,23,42,0.96);border-bottom:${toolbarShown ? '1px solid #334155' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};">
           ${toolbarShown ? `<a href="${COMIC.backUrl}" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;">← Back</a>` : ''}
           ${toolbarShown ? `<div style="flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${COMIC.title}</div>` : ''}
           ${toolbarShown ? `<button data-action="prev" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">◀</button>` : ''}
@@ -342,8 +349,8 @@
         </div>
 
         <div id="viewer" style="position:relative;flex:1;overflow:${state.zoom > 100 ? 'auto' : 'hidden'};background:#000;display:flex;align-items:${state.zoom > 100 ? 'flex-start' : 'center'};justify-content:center;cursor:pointer;min-height:0;">
-          <div style="position:absolute;left:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&lt;</div>
-          <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&gt;</div>
+          <div id="side-arrow-left" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);opacity:0.42;transition:opacity 200ms ease;text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&lt;</div>
+          <div id="side-arrow-right" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);opacity:0.42;transition:opacity 200ms ease;text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&gt;</div>
           <div style="display:flex;align-items:center;justify-content:center;min-width:${state.zoom > 100 ? 'max-content' : '100%'};min-height:${state.zoom > 100 ? 'max-content' : '100%'};padding:16px;">
             ${showSpread ? `
               <div style="display:flex;gap:8px;align-items:center;">
@@ -363,25 +370,48 @@
           <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:#334155;color:white;border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
         </div>
 
-        ${!state.toolbarPinned && !state.toolbarVisible && !touchToolbarToggle ? `<div id="toolbar-handle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);width:72px;height:10px;border-radius:0 0 10px 10px;background:rgba(148,163,184,0.18);z-index:20;cursor:pointer;"></div>` : ''}
-        ${touchToolbarToggle ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:88px;height:22px;padding:0 14px;border-radius:0 0 12px 12px;border:none;border-bottom:1px solid rgba(148,163,184,0.18);border-left:1px solid rgba(148,163,184,0.18);border-right:1px solid rgba(148,163,184,0.18);background:rgba(15,23,42,0.82);color:rgba(148,163,184,0.9);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;">${state.toolbarVisible ? '▲ hide' : '▼ menu'}</button>` : ''}
+        ${toolbarToggleShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:88px;height:22px;padding:0 14px;border-radius:0 0 12px 12px;border:none;border-bottom:1px solid rgba(148,163,184,0.18);border-left:1px solid rgba(148,163,184,0.18);border-right:1px solid rgba(148,163,184,0.18);background:rgba(15,23,42,0.82);color:rgba(148,163,184,0.9);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;">▼ menu</button>` : ''}
       </div>`;
 
     viewerRef = document.getElementById('viewer');
     toolbarRef = document.getElementById('toolbar');
     zoomControlsRef = document.getElementById('zoom-controls');
+    sideArrowLeftRef = document.getElementById('side-arrow-left');
+    sideArrowRightRef = document.getElementById('side-arrow-right');
     pageOverlayRef = document.getElementById('page-overlay');
     const toolbar = document.getElementById('toolbar');
     const zoomRange = document.getElementById('zoom-range');
     const zoomIn = document.getElementById('zoom-in');
     const zoomOut = document.getElementById('zoom-out');
-    const toolbarHandle = document.getElementById('toolbar-handle');
     const toolbarToggle = document.getElementById('toolbar-toggle');
+
+    if (lastToolbarShown !== toolbarShown) {
+      logToolbarEvent(toolbarShown ? 'draw-show' : 'draw-hide', {
+        toolbarShown,
+        toolbarToggle: Boolean(toolbarToggle),
+        toolbarHeight: toolbarShown ? '36px' : '0',
+        viewerOverflow: state.zoom > 100 ? 'auto' : 'hidden',
+        hasImage: Boolean(state.imgSrc),
+        hasSpread: Boolean(showSpread),
+      });
+      lastToolbarShown = toolbarShown;
+    }
 
     if (viewerRef) {
       viewerRef.onclick = (e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
+        console.log('[viewer-click]', {
+          clientX: e.clientX,
+          clientY: e.clientY,
+          rectLeft: rect.left,
+          rectTop: rect.top,
+          rectWidth: rect.width,
+          rectHeight: rect.height,
+          x,
+          zone: x < rect.width * 0.3 ? 'prev' : x > rect.width * 0.7 ? 'next' : 'middle',
+          target: e.target && e.target.tagName,
+        });
         if (x < rect.width * 0.3) prevPage();
         else if (x > rect.width * 0.7) nextPage();
       };
@@ -417,17 +447,11 @@
     }
     if (zoomIn) zoomIn.onclick = () => setZoom(state.zoom + 10);
     if (zoomOut) zoomOut.onclick = () => setZoom(state.zoom - 10);
-    if (toolbarHandle) toolbarHandle.onclick = () => {
-      if (!state.toolbarVisible) {
-        state.toolbarVisible = true;
-        syncToolbarChrome();
-        scheduleToolbarFade(1000);
-      }
-    };
     if (toolbarToggle) toolbarToggle.onclick = toggleToolbarVisible;
 
     syncToolbarChrome();
     syncZoomControlsOpacity();
+    syncSideArrowOpacity();
     syncPageOverlay();
   }
 
@@ -471,15 +495,8 @@
   window.addEventListener('pointermove', (event) => {
     if (event.pointerType && event.pointerType !== 'mouse') return;
     const nextPosition = { x: event.clientX, y: event.clientY };
-    const moved = !lastPointerPosition || Math.hypot(nextPosition.x - lastPointerPosition.x, nextPosition.y - lastPointerPosition.y) > 8;
-    const movedSinceTurn = !pointerRevealAnchor || Math.hypot(nextPosition.x - pointerRevealAnchor.x, nextPosition.y - pointerRevealAnchor.y) > 24;
     lastPointerPosition = nextPosition;
-    if (pointerRevealAnchor && !movedSinceTurn) {
-      return;
-    }
-    if (pointerRevealAnchor && movedSinceTurn) pointerRevealAnchor = null;
     revealZoomControls(1200);
-    revealToolbar(1200);
   }, { passive: true });
   window.addEventListener('touchstart', () => {
     pointerRevealAnchor = null;
