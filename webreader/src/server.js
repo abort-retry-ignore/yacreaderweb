@@ -519,8 +519,10 @@ async function renderComicReader(req, res, libraryId, comicId) {
   const pageParam = urlObj.searchParams.get('page');
   const spreadParam = urlObj.searchParams.get('spread');
   const zoomParam = urlObj.searchParams.get('zoom');
+  const resumeParam = urlObj.searchParams.get('resume');
   const requestedPage = parseInt(pageParam || '0', 10) || 0;
   const spreadMode = spreadParam === '1' || spreadParam === 'true';
+  const allowResume = resumeParam === '1' || resumeParam === 'true';
   const parsedZoomLevel = Number.parseInt(zoomParam || '', 10);
   const initialZoomLevel = Math.max(100, Math.min(Number.isFinite(parsedZoomLevel) ? parsedZoomLevel : 100, 300));
 
@@ -531,7 +533,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
     });
 
     const totalContentPages = comicInfo.num_pages || 1;
-    const totalDisplayPages = totalContentPages + 1;
+    const totalDisplayPages = totalContentPages;
     const safePage = Math.max(0, Math.min(requestedPage, totalDisplayPages - 1));
     const coverHash = comicInfo.hash || '';
     const toolbarStorageKey = `webreader_toolbar_pinned_${libraryId}_${comicId}`;
@@ -556,11 +558,8 @@ async function renderComicReader(req, res, libraryId, comicId) {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {});
     }
   </script>
-  <script type="module">
-    import { h, render } from 'https://esm.sh/preact@10.22.0';
-    import { useState, useEffect, useRef, useCallback } from 'https://esm.sh/preact@10.22.0/hooks';
-
-    const COMIC = ${JSON.stringify({
+  <script>
+    window.__COMIC__ = ${JSON.stringify({
       libraryId,
       comicId,
       totalContentPages,
@@ -568,422 +567,16 @@ async function renderComicReader(req, res, libraryId, comicId) {
       coverHash,
       title: comicInfo.title || comicInfo.file_name || 'Comic',
       backUrl: `/libraries/${encodeURIComponent(libraryId)}/folders/1`,
+      toolbarKey: toolbarStorageKey,
+      toolbarVisibleKey: `yacreaderweb_toolbar_visible_${libraryId}_${comicId}`,
+      progressKey: 'yacreaderweb_progress_' + libraryId + '_' + comicId,
+      initialPage: safePage,
+      initialSpread: spreadMode,
+      initialZoom: initialZoomLevel,
+      allowResume,
     })};
-    const TOOLBAR_KEY = ${JSON.stringify(toolbarStorageKey)};
-    const PROGRESS_KEY = 'yacreaderweb_progress_' + COMIC.libraryId + '_' + COMIC.comicId;
-    const INITIAL_PAGE = ${safePage};
-    const INITIAL_SPREAD = ${spreadMode ? 'true' : 'false'};
-    const INITIAL_ZOOM = ${initialZoomLevel};
-
-    function pageUrl(page) {
-      return '/libraries/' + encodeURIComponent(COMIC.libraryId) + '/comics/' + encodeURIComponent(COMIC.comicId) + '/pages/' + page;
-    }
-    function coverUrl() {
-      return COMIC.coverHash ? '/covers/' + encodeURIComponent(COMIC.libraryId) + '/' + encodeURIComponent(COMIC.coverHash) + '.jpg' : '';
-    }
-    function pageLabelFor(page) {
-      return page === 0 ? 'Cover' : 'Page ' + page;
-    }
-
-    function loadImage(src) {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        let retried = false;
-        img.onload = () => resolve(img);
-        img.onerror = () => {
-          if (retried) { reject(new Error('Failed to load ' + src)); return; }
-          retried = true;
-          setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + 'retry=' + Date.now(); }, 300);
-        };
-        img.src = src;
-      });
-    }
-
-    function App() {
-      const [page, setPage] = useState(() => {
-        try {
-          const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null');
-          if (saved && Number.isInteger(saved.page)) {
-            return Math.max(0, Math.min(saved.page, COMIC.totalDisplayPages - 1));
-          }
-        } catch {}
-        return INITIAL_PAGE;
-      });
-      const [spread, setSpread] = useState(() => {
-        try {
-          const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null');
-          if (saved && typeof saved.spread === 'boolean') {
-            return saved.spread;
-          }
-        } catch {}
-        return INITIAL_SPREAD;
-      });
-      const [zoom, setZoom] = useState(() => {
-        try {
-          const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null');
-          if (saved && Number.isInteger(saved.zoom)) {
-            return Math.max(100, Math.min(saved.zoom, 300));
-          }
-        } catch {}
-        return INITIAL_ZOOM;
-      });
-      const [toolbarVisible, setToolbarVisible] = useState(false);
-      const [toolbarPinned, setToolbarPinned] = useState(() => {
-        try { return localStorage.getItem(TOOLBAR_KEY) === '1'; } catch { return false; }
-      });
-      // imgSrc: single page src; spreadSrcs: [left, right]
-      const [imgSrc, setImgSrc] = useState('');
-      const [imgNaturalSize, setImgNaturalSize] = useState({ w: 0, h: 0 });
-      const [spreadSrcs, setSpreadSrcs] = useState(['', '']);
-      const [spreadNaturalSizes, setSpreadNaturalSizes] = useState([{ w: 0, h: 0 }, { w: 0, h: 0 }]);
-      const [pageLabel, setPageLabel] = useState('');
-      const [pageOverlay, setPageOverlay] = useState('');
-      const [pageOverlayKey, setPageOverlayKey] = useState(0);
-      const [pageOverlayVisible, setPageOverlayVisible] = useState(false);
-      const [zoomDimmed, setZoomDimmed] = useState(false);
-
-      const viewerRef = useRef(null);
-
-      // Derived spread pages
-      function getSpreadPages(p) {
-        const rightPage = p % 2 === 1 ? p : p + 1;
-        const leftPage = rightPage - 1;
-        return [leftPage, rightPage].filter(x => x >= 1 && x <= COMIC.totalContentPages);
-      }
-
-      // Navigate to a page, updating URL
-      const goToPage = useCallback((nextPage, opts = {}) => {
-        const p = Math.max(0, Math.min(nextPage, COMIC.totalDisplayPages - 1));
-        setPage(p);
-        if (opts.pushUrl !== false) {
-          const url = new URL(window.location);
-          url.searchParams.set('page', String(p));
-          url.searchParams.set('spread', spread ? '1' : '0');
-          url.searchParams.set('zoom', String(zoom));
-          window.history.pushState({}, '', url);
-        }
-      }, [spread, zoom]);
-
-      const prevPage = useCallback(() => {
-        setPage(p => {
-          const next = Math.max(0, p - (spread ? 2 : 1));
-          const url = new URL(window.location);
-          url.searchParams.set('page', String(next));
-          url.searchParams.set('spread', spread ? '1' : '0');
-          url.searchParams.set('zoom', String(zoom));
-          window.history.pushState({}, '', url);
-          return next;
-        });
-      }, [spread, zoom]);
-
-      const nextPage = useCallback(() => {
-        setPage(p => {
-          const next = Math.min(COMIC.totalDisplayPages - 1, p + (spread ? 2 : 1));
-          const url = new URL(window.location);
-          url.searchParams.set('page', String(next));
-          url.searchParams.set('spread', spread ? '1' : '0');
-          url.searchParams.set('zoom', String(zoom));
-          window.history.pushState({}, '', url);
-          return next;
-        });
-      }, [spread, zoom]);
-
-      // Load image(s) when page or spread changes
-      useEffect(() => {
-        let cancelled = false;
-        const overlayLabel = String(page);
-
-        setPageOverlay(overlayLabel);
-        setPageOverlayKey(k => k + 1);
-        setPageOverlayVisible(true);
-        setZoomDimmed(false);
-
-        const overlayTimer = setTimeout(() => setPageOverlayVisible(false), 1000);
-        const zoomTimer = setTimeout(() => setZoomDimmed(true), 1000);
-
-        if (spread && page > 0) {
-          const pages = getSpreadPages(page);
-          const label = pages.length === 2 ? pages[0] + '-' + pages[1] : pageLabelFor(pages[0]);
-          setPageLabel(label + ' / ' + COMIC.totalDisplayPages);
-          setImgSrc('');
-          Promise.all(pages.map(p => loadImage(pageUrl(p)))).then(imgs => {
-            if (cancelled) return;
-            setSpreadSrcs(imgs.map(i => i.src));
-            setSpreadNaturalSizes(imgs.map(i => ({ w: i.naturalWidth, h: i.naturalHeight })));
-          }).catch(() => {});
-        } else {
-          const src = page === 0 ? coverUrl() : pageUrl(page);
-          setPageLabel(pageLabelFor(page) + ' / ' + COMIC.totalDisplayPages);
-          setSpreadSrcs(['', '']);
-          loadImage(src).then(img => {
-            if (cancelled) return;
-            setImgSrc(img.src);
-            setImgNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
-          }).catch(() => {});
-        }
-        // Scroll to top on page change
-        if (viewerRef.current) viewerRef.current.scrollTop = 0;
-        return () => {
-          cancelled = true;
-          clearTimeout(overlayTimer);
-          clearTimeout(zoomTimer);
-        };
-      }, [page, spread]);
-
-      // Persist reading progress per client per comic.
-      useEffect(() => {
-        try {
-          localStorage.setItem(PROGRESS_KEY, JSON.stringify({ page, spread, zoom }));
-        } catch {}
-      }, [page, spread, zoom]);
-
-      // Update URL when zoom changes (without pushing history)
-      useEffect(() => {
-        const url = new URL(window.location);
-        if (url.pathname.match(/^\/libraries\/[^/]+\/comics\/[^/]+$/)) {
-          url.searchParams.set('page', String(page));
-          url.searchParams.set('spread', spread ? '1' : '0');
-          url.searchParams.set('zoom', String(zoom));
-          window.history.replaceState({}, '', url);
-        }
-      }, [page, spread, zoom]);
-
-      // Keyboard shortcuts
-      useEffect(() => {
-        const onKey = (e) => {
-          if (e.key === 'ArrowLeft') prevPage();
-          if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextPage(); }
-          if (e.key === 'ArrowUp' || e.key === 'PageUp') {
-            const el = viewerRef.current;
-            if (el) {
-              e.preventDefault();
-              el.scrollBy({ top: -(el.clientHeight * 0.85), behavior: 'smooth' });
-            }
-          }
-          if (e.key === 'ArrowDown' || e.key === 'PageDown') {
-            const el = viewerRef.current;
-            if (el) {
-              e.preventDefault();
-              el.scrollBy({ top: el.clientHeight * 0.85, behavior: 'smooth' });
-            }
-          }
-          if (e.key === '+' || e.key === '=') setZoom(z => Math.min(300, z + 10));
-          if (e.key === '-') setZoom(z => Math.max(100, z - 10));
-          if (e.key.toLowerCase() === 's') setSpread(s => !s);
-          if (e.key.toLowerCase() === 'w') setZoom(z => z > 100 ? 100 : 130);
-          if (e.key.toLowerCase() === 't') setToolbarVisible(v => !v);
-          if (e.key === 'Escape') setToolbarVisible(false);
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-      }, [prevPage, nextPage]);
-
-      // Popstate
-      useEffect(() => {
-        const onPop = () => {
-          const url = new URL(window.location);
-          const p = parseInt(url.searchParams.get('page') || '0', 10) || 0;
-          const s = url.searchParams.get('spread') === '1';
-          const z = parseInt(url.searchParams.get('zoom') || '100', 10) || 100;
-          setPage(p);
-          setSpread(s);
-          setZoom(z);
-        };
-        window.addEventListener('popstate', onPop);
-        return () => window.removeEventListener('popstate', onPop);
-      }, []);
-
-      // Resize
-      useEffect(() => {
-        const onResize = () => { /* zoom is CSS transform, no action needed */ };
-        window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
-      }, []);
-
-      function togglePin() {
-        setToolbarPinned(p => {
-          const next = !p;
-          try { next ? localStorage.setItem(TOOLBAR_KEY, '1') : localStorage.removeItem(TOOLBAR_KEY); } catch {}
-          return next;
-        });
-      }
-
-      // Compute scaled image size for zoom
-      // At zoom=100: image fills viewer (constrained by both W and H)
-      // At zoom>100: image is zoomed relative to fit-to-screen size, centered, scrollable
-      function computeImgStyle(nw, nh) {
-        if (!nw || !nh) return {};
-        const viewer = viewerRef.current;
-        if (!viewer) return {};
-        const availW = viewer.clientWidth - 32;
-        const availH = viewer.clientHeight - 32;
-        const scale = Math.min(availW / nw, availH / nh);
-        const fittedW = Math.round(nw * scale);
-        const fittedH = Math.round(nh * scale);
-        if (zoom === 100) {
-          return { width: fittedW + 'px', height: fittedH + 'px', flexShrink: '0' };
-        }
-        return {
-          width: Math.round(fittedW * zoom / 100) + 'px',
-          height: Math.round(fittedH * zoom / 100) + 'px',
-          flexShrink: '0',
-        };
-      }
-
-      const showSpread = spread && spreadSrcs[0];
-      const imgStyle = showSpread ? {} : computeImgStyle(imgNaturalSize.w, imgNaturalSize.h);
-
-      // Toolbar visibility: pinned always shown, otherwise toggled
-      const toolbarShown = toolbarPinned || toolbarVisible;
-      const zoomControlStyle = {
-        position: 'fixed', right: 12, top: '50%', transform: 'translateY(-50%)',
-        zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center',
-        gap: 8, padding: '10px 8px', borderRadius: 999,
-        background: 'rgba(15,23,42,0.88)', border: '1px solid rgba(148,163,184,0.2)',
-        boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
-        opacity: zoomDimmed ? 0.36 : 0.8,
-        transition: 'opacity 200ms ease',
-      };
-
-      const overlaySize = Math.min(window.innerWidth * 0.35, window.innerHeight * 0.45);
-      const overlayFontSize = Math.max(128, Math.min(overlaySize, 360));
-
-      return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', overflow: 'hidden' } },
-        // Toolbar
-        h('div', {
-          key: pageOverlayKey,
-          style: {
-            height: toolbarShown ? '36px' : '0',
-            overflow: 'hidden',
-            flexShrink: 0,
-            transition: 'height 160ms ease',
-            background: 'rgba(15,23,42,0.96)',
-            borderBottom: toolbarShown ? '1px solid #334155' : 'none',
-            display: 'flex',
-            alignItems: 'center',
-            padding: toolbarShown ? '0 8px' : '0',
-            gap: '8px',
-            fontSize: '12px',
-          }
-        },
-          toolbarShown && h('a', { href: COMIC.backUrl, style: btnStyle }, '← Back'),
-          toolbarShown && h('div', { style: { flex: 1, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, COMIC.title),
-          toolbarShown && h('button', { onClick: prevPage, style: btnStyle }, '◀'),
-          toolbarShown && h('span', { style: { minWidth: 90, textAlign: 'center', color: '#94a3b8', fontSize: 13 } }, pageLabel),
-          toolbarShown && h('button', { onClick: nextPage, style: btnStyle }, '▶'),
-          toolbarShown && h('button', { onClick: () => setSpread(s => !s), style: { ...btnStyle, background: '#475569' } }, spread ? 'Spread' : 'Single'),
-          toolbarShown && h('button', { onClick: () => setZoom(z => z > 100 ? 100 : 130), style: { ...btnStyle, background: '#475569' } }, zoom > 100 ? 'Fit Width' : 'Fit Screen'),
-          toolbarShown && h('button', { onClick: togglePin, style: { ...btnStyle, background: toolbarPinned ? '#0f766e' : '#334155', minWidth: 28 } }, toolbarPinned ? '📌' : '📍'),
-        ),
-
-        // Viewer
-        h('div', {
-          ref: viewerRef,
-          onClick: (e) => {
-            // Left/right click zones
-            const rect = e.currentTarget.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            if (x < rect.width * 0.3) prevPage();
-            else if (x > rect.width * 0.7) nextPage();
-            else if (!toolbarPinned) setToolbarVisible(v => !v);
-          },
-          style: {
-            flex: 1,
-            overflow: zoom > 100 ? 'auto' : 'hidden',
-            background: '#000',
-            display: 'flex',
-            alignItems: zoom > 100 ? 'flex-start' : 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            minHeight: 0,
-          }
-        },
-          h('div', {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minWidth: zoom > 100 ? 'max-content' : '100%',
-              minHeight: zoom > 100 ? 'max-content' : '100%',
-              padding: '16px',
-            }
-          },
-            showSpread
-              ? h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-                  spreadSrcs[0] && h('img', {
-                    src: spreadSrcs[0],
-                    style: computeImgStyle(spreadNaturalSizes[0].w, spreadNaturalSizes[0].h),
-                    draggable: false,
-                  }),
-                  spreadSrcs[1] && h('img', {
-                    src: spreadSrcs[1],
-                    style: computeImgStyle(spreadNaturalSizes[1].w, spreadNaturalSizes[1].h),
-                    draggable: false,
-                  }),
-                )
-              : imgSrc && h('img', {
-                  src: imgSrc,
-                  style: { ...imgStyle, boxShadow: '0 10px 40px rgba(0,0,0,0.7)', display: 'block' },
-                  draggable: false,
-                })
-          )
-        ),
-
-        h('div', {
-          style: {
-            position: 'fixed',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-            zIndex: 9,
-            opacity: pageOverlayVisible ? 1 : 0,
-            transition: 'opacity 1000ms ease',
-            color: 'rgba(255,255,255,0.28)',
-            textShadow: '0 10px 30px rgba(0,0,0,0.7)',
-            fontSize: overlayFontSize + 'px',
-            fontWeight: 800,
-            letterSpacing: '-0.05em',
-          }
-        }, pageOverlay),
-
-        // Zoom control (fixed right side)
-        h('div', { style: zoomControlStyle },
-          h('button', { onClick: () => setZoom(z => Math.min(300, z + 10)), style: roundBtnStyle }, '+'),
-          h('input', {
-            type: 'range', min: 100, max: 300, step: 10, value: zoom,
-            onInput: (e) => setZoom(Number(e.target.value)),
-            style: { writingMode: 'vertical-lr', direction: 'rtl', width: 28, height: 180, accentColor: '#60a5fa' },
-          }),
-          h('div', { style: { minWidth: 42, textAlign: 'center', color: '#cbd5e1', fontSize: 11 } }, zoom + '%'),
-          h('button', { onClick: () => setZoom(z => Math.max(100, z - 10)), style: roundBtnStyle }, '−'),
-        ),
-
-        // Toolbar reveal handle (when hidden)
-        !toolbarPinned && !toolbarVisible && h('div', {
-          onClick: () => setToolbarVisible(true),
-          style: {
-            position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)',
-            width: 72, height: 10, borderRadius: '0 0 10px 10px',
-            background: 'rgba(148,163,184,0.18)', zIndex: 20, cursor: 'pointer',
-          }
-        }),
-      );
-    }
-
-    const btnStyle = {
-      background: '#334155', color: 'white', border: 'none', padding: '3px 8px',
-      borderRadius: 4, fontSize: 11, cursor: 'pointer', textDecoration: 'none', display: 'inline-block',
-    };
-    const roundBtnStyle = {
-      width: 30, height: 30, padding: 0, borderRadius: 999,
-      background: '#334155', color: 'white', border: 'none', cursor: 'pointer',
-      fontSize: 16, lineHeight: 1,
-    };
-
-    render(h(App, null), document.getElementById('app'));
   </script>
+  <script src="/comic-reader.js"></script>
 </body>
 </html>`;
 
@@ -1128,7 +721,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/manifest.webmanifest' || url.pathname === '/service-worker.js' || url.pathname === '/icon.svg' || url.pathname === '/apple-touch-icon.png' || url.pathname === '/icon-192.png' || url.pathname === '/icon-512.png' || url.pathname === '/maskable-icon-192.png' || url.pathname === '/maskable-icon-512.png') {
+  if (url.pathname === '/manifest.webmanifest' || url.pathname === '/service-worker.js' || url.pathname === '/comic-reader.js' || url.pathname === '/icon.svg' || url.pathname === '/apple-touch-icon.png' || url.pathname === '/icon-192.png' || url.pathname === '/icon-512.png' || url.pathname === '/maskable-icon-192.png' || url.pathname === '/maskable-icon-512.png') {
     const served = await serveStaticAsset(res, url.pathname.slice(1));
     if (served) return;
   }
