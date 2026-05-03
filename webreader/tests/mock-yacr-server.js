@@ -2,6 +2,11 @@ const http = require('node:http');
 const { PNG } = require('pngjs');
 
 const PORT = 6100;
+const DEBUG = process.env.WEBREADER_DEBUG === '1';
+
+function debugLog(...args) {
+  if (DEBUG) console.log(...args);
+}
 const FULLINFO = {
   id: 'comic-1',
   library_id: 'lib-1',
@@ -78,5 +83,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Mock YACReader server listening on ${PORT}`);
+  debugLog(`Mock YACReader server listening on ${PORT}`);
 });

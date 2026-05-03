@@ -1,6 +1,11 @@
 (function () {
   const COMIC = window.__COMIC__;
   if (!COMIC) return;
+  const DEBUG = COMIC.debug === true;
+
+  function debugLog(...args) {
+    if (DEBUG) console.log(...args);
+  }
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/service-worker.js').catch(() => {});
@@ -59,7 +64,7 @@
   }
 
   function logToolbarEvent(kind, details = {}) {
-    console.log('[toolbar-state]', {
+    debugLog('[toolbar-state]', {
       kind,
       page: state.page,
       zoom: state.zoom,
@@ -270,13 +275,13 @@
   }
 
   function prevPage() {
-    console.log('[page-advance]', { source: 'prevPage', from: state.page, to: Math.max(0, state.page - (state.spread ? 2 : 1)) });
+    debugLog('[page-advance]', { source: 'prevPage', from: state.page, to: Math.max(0, state.page - (state.spread ? 2 : 1)) });
     state.page = Math.max(0, state.page - (state.spread ? 2 : 1));
     showPage(state.page);
   }
 
   function nextPage() {
-    console.log('[page-advance]', { source: 'nextPage', from: state.page, to: Math.min(COMIC.totalDisplayPages - 1, state.page + (state.spread ? 2 : 1)) });
+    debugLog('[page-advance]', { source: 'nextPage', from: state.page, to: Math.min(COMIC.totalDisplayPages - 1, state.page + (state.spread ? 2 : 1)) });
     state.page = Math.min(COMIC.totalDisplayPages - 1, state.page + (state.spread ? 2 : 1));
     showPage(state.page);
   }
@@ -395,7 +400,7 @@
       viewerRef.onclick = (e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
-        console.log('[viewer-click]', {
+        debugLog('[viewer-click]', {
           clientX: e.clientX,
           clientY: e.clientY,
           rectLeft: rect.left,

@@ -7,8 +7,13 @@ const JSZip = require('jszip');
 
 const PORT = Number.parseInt(process.env.WEBREADER_PORT || '3000', 10);
 const YACR_SERVER_URL = process.env.YACR_SERVER_URL || 'http://localhost:60000';
+const DEBUG = process.env.WEBREADER_DEBUG === '1';
 const ROOT_FOLDER_ID = '1';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+
+function debugLog(...args) {
+  if (DEBUG) console.log(...args);
+}
 
 const APPLE_SPLASH_LINKS = [
   ['1320x2868.png', 'screen and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)'],
@@ -590,6 +595,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
       initialSpread: spreadMode,
       initialZoom: initialZoomLevel,
       initialToolbarPinned,
+      debug: DEBUG,
       allowResume,
     })};
   </script>
@@ -606,7 +612,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
 async function proxyComicPage(req, res, libraryId, comicId, pageNum) {
   const requestId = getRequestId(req, res);
   const upstreamPageNum = Math.max(0, Number.parseInt(pageNum, 10) - 1);
-  console.log(`[proxyComicPage] library=${libraryId} comic=${comicId} page=${pageNum} upstreamPage=${upstreamPageNum} requestId=${requestId}`);
+  debugLog(`[proxyComicPage] library=${libraryId} comic=${comicId} page=${pageNum} upstreamPage=${upstreamPageNum} requestId=${requestId}`);
   try {
     const result = await fetchComicPageBuffer(libraryId, comicId, upstreamPageNum, requestId);
     res.writeHead(200, {
@@ -683,7 +689,7 @@ async function downloadComicCbz(req, res, libraryId, comicId) {
   const requestId = getRequestId(req, res);
 
   try {
-    console.log(`[downloadComicCbz] library=${libraryId} comic=${comicId} requestId=${requestId}`);
+    debugLog(`[downloadComicCbz] library=${libraryId} comic=${comicId} requestId=${requestId}`);
     const comicInfo = await fetchJson(`/v2/library/${encodeURIComponent(libraryId)}/comic/${encodeURIComponent(comicId)}/fullinfo`, requestId);
     await fetch(new URL(`/v2/library/${encodeURIComponent(libraryId)}/comic/${encodeURIComponent(comicId)}/remote`, YACR_SERVER_URL), {
       headers: { 'x-request-id': requestId }
@@ -704,7 +710,7 @@ async function downloadComicCbz(req, res, libraryId, comicId) {
 
     for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
       const pageName = String(pageIndex + 1).padStart(4, '0') + '.jpg';
-      console.log(`[downloadComicCbz] fetching page ${pageIndex + 1}/${totalPages} for comic=${comicId}`);
+      debugLog(`[downloadComicCbz] fetching page ${pageIndex + 1}/${totalPages} for comic=${comicId}`);
       const page = await fetchComicPageBuffer(libraryId, comicId, pageIndex, requestId, { maxRetries: 20 });
       zip.file(pageName, page.body);
     }
@@ -798,6 +804,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`YACReaderWeb listening on port ${PORT}`);
-  console.log(`Using YACReader server ${YACR_SERVER_URL}`);
+  debugLog(`YACReaderWeb listening on port ${PORT}`);
+  debugLog(`Using YACReader server ${YACR_SERVER_URL}`);
 });
