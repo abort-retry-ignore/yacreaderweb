@@ -8,7 +8,7 @@ COPY src ./src
 COPY public ./public
 
 ENV WEBREADER_PORT=3000
-ENV YACR_SERVER_URL=http://yacreaderlibrary-server-docker:8080
+ENV YACR_SERVER_URL=http://localhost:60000
 
 EXPOSE 3000
 

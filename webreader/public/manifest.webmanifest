@@ -1,13 +1,13 @@
 {
-  "name": "Yakweb",
-  "short_name": "Yakweb",
+  "name": "YACReaderWeb",
+  "short_name": "YACReaderWeb",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#08110b",
   "theme_color": "#08110b",
-  "description": "Comic reader web frontend for YACReaderLibraryServer.",
+  "description": "Web reader frontend for YACReaderLibraryServer.",
   "icons": [
     {
       "src": "/icon-192.png",

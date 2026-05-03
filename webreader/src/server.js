@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const JSZip = require('jszip');
 
 const PORT = Number.parseInt(process.env.WEBREADER_PORT || '3000', 10);
-const YACR_SERVER_URL = process.env.YACR_SERVER_URL || 'http://localhost:8080';
+const YACR_SERVER_URL = process.env.YACR_SERVER_URL || 'http://localhost:60000';
 const ROOT_FOLDER_ID = '1';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
@@ -50,7 +50,7 @@ function pageHead(title, themeColor = '#08110b') {
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Yakweb">
+  <meta name="apple-mobile-web-app-title" content="YACReaderWeb">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -220,7 +220,7 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
   return `<!doctype html>
 <html lang="en">
   <head>
-    ${pageHead('YACReader Yakweb')}
+    ${pageHead('YACReaderWeb')}
     <style>
       :root {
         color-scheme: dark;
@@ -400,7 +400,7 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
     </script>
     <main>
       <aside>
-        <h1>Yakweb</h1>
+        <h1>YACReaderWeb</h1>
         <p class="hint">Upstream: ${escapeHtml(YACR_SERVER_URL)}</p>
         <h2>Libraries</h2>
         <ul>${libraryLinks || '<li class="hint">No libraries found</li>'}</ul>
@@ -540,7 +540,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
     const html = `<!doctype html>
 <html lang="en">
 <head>
-  ${pageHead(`${title} - Yakweb`)}
+   ${pageHead(`${title} - YACReaderWeb`)}
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
     *, *::before, *::after { box-sizing: border-box; }
@@ -570,7 +570,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
       backUrl: `/libraries/${encodeURIComponent(libraryId)}/folders/1`,
     })};
     const TOOLBAR_KEY = ${JSON.stringify(toolbarStorageKey)};
-    const PROGRESS_KEY = 'yakweb_progress_' + COMIC.libraryId + '_' + COMIC.comicId;
+    const PROGRESS_KEY = 'yacreaderweb_progress_' + COMIC.libraryId + '_' + COMIC.comicId;
     const INITIAL_PAGE = ${safePage};
     const INITIAL_SPREAD = ${spreadMode ? 'true' : 'false'};
     const INITIAL_ZOOM = ${initialZoomLevel};
@@ -691,12 +691,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
       // Load image(s) when page or spread changes
       useEffect(() => {
         let cancelled = false;
-        const overlayLabel = spread && page > 0
-          ? (() => {
-              const pages = getSpreadPages(page);
-              return pages.length === 2 ? pages[0] + '-' + pages[1] : pageLabelFor(pages[0]);
-            })()
-          : pageLabelFor(page);
+        const overlayLabel = String(page);
 
         setPageOverlay(overlayLabel);
         setPageOverlayKey(k => k + 1);
@@ -745,10 +740,12 @@ async function renderComicReader(req, res, libraryId, comicId) {
       // Update URL when zoom changes (without pushing history)
       useEffect(() => {
         const url = new URL(window.location);
-        url.searchParams.set('page', String(page));
-        url.searchParams.set('spread', spread ? '1' : '0');
-        url.searchParams.set('zoom', String(zoom));
-        window.history.replaceState({}, '', url);
+        if (url.pathname.match(/^\/libraries\/[^/]+\/comics\/[^/]+$/)) {
+          url.searchParams.set('page', String(page));
+          url.searchParams.set('spread', spread ? '1' : '0');
+          url.searchParams.set('zoom', String(zoom));
+          window.history.replaceState({}, '', url);
+        }
       }, [page, spread, zoom]);
 
       // Keyboard shortcuts
@@ -844,9 +841,12 @@ async function renderComicReader(req, res, libraryId, comicId) {
         gap: 8, padding: '10px 8px', borderRadius: 999,
         background: 'rgba(15,23,42,0.88)', border: '1px solid rgba(148,163,184,0.2)',
         boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
-        opacity: zoomDimmed ? 0.28 : 0.72,
+        opacity: zoomDimmed ? 0.36 : 0.8,
         transition: 'opacity 200ms ease',
       };
+
+      const overlaySize = Math.min(window.innerWidth * 0.35, window.innerHeight * 0.45);
+      const overlayFontSize = Math.max(128, Math.min(overlaySize, 360));
 
       return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', overflow: 'hidden' } },
         // Toolbar
@@ -942,7 +942,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
             transition: 'opacity 1000ms ease',
             color: 'rgba(255,255,255,0.28)',
             textShadow: '0 10px 30px rgba(0,0,0,0.7)',
-            fontSize: 'clamp(72px, 14vw, 180px)',
+            fontSize: overlayFontSize + 'px',
             fontWeight: 800,
             letterSpacing: '-0.05em',
           }
@@ -1139,12 +1139,22 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/') {
+    if (url.searchParams.has('zoom') || url.searchParams.has('page') || url.searchParams.has('spread')) {
+      url.search = '';
+      sendRedirect(res, url.pathname);
+      return;
+    }
     await renderHome(req, res);
     return;
   }
 
   const folderMatch = url.pathname.match(/^\/libraries\/([^/]+)\/folders\/([^/]+)$/);
   if (folderMatch) {
+    if (url.searchParams.has('zoom') || url.searchParams.has('page') || url.searchParams.has('spread')) {
+      url.search = '';
+      sendRedirect(res, url.pathname);
+      return;
+    }
     await renderHome(req, res, folderMatch[1], folderMatch[2]);
     return;
   }
@@ -1178,6 +1188,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Yakweb listening on port ${PORT}`);
+    console.log(`YACReaderWeb listening on port ${PORT}`);
   console.log(`Using YACReader server ${YACR_SERVER_URL}`);
 });
