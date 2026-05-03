@@ -38,6 +38,7 @@
   let zoomControlsRef = null;
   let sideArrowLeftRef = null;
   let sideArrowRightRef = null;
+  let toolbarToggleRef = null;
   let pageOverlayRef = null;
   let overlayTimer = null;
   let toolbarTimer = null;
@@ -46,7 +47,6 @@
   let pointerRevealAnchor = null;
   let lastPointerPosition = null;
   let lastToolbarShown = null;
-  const MIN_LOADING_RING_MS = 250;
 
   function syncToolbarChrome() {
     if (!toolbarRef) return;
@@ -82,6 +82,11 @@
     if (sideArrowRightRef) sideArrowRightRef.style.opacity = opacity;
   }
 
+  function syncToolbarToggleOpacity() {
+    if (!toolbarToggleRef) return;
+    toolbarToggleRef.style.opacity = state.zoomDimmed ? '0.36' : '0.8';
+  }
+
   function syncPageOverlay() {
     if (!pageOverlayRef) return;
     if (state.isLoadingPage) {
@@ -99,6 +104,7 @@
       state.zoomDimmed = true;
       syncZoomControlsOpacity();
       syncSideArrowOpacity();
+      syncToolbarToggleOpacity();
     }, delay);
   }
 
@@ -109,6 +115,7 @@
     if (wasDimmed) {
       syncZoomControlsOpacity();
       syncSideArrowOpacity();
+      syncToolbarToggleOpacity();
     }
   }
 
@@ -206,26 +213,16 @@
   }
 
   function completePageLoad(page, applyLoadedState) {
-    const finish = () => {
-      applyLoadedState();
-      state.pageOverlay = page === 0 ? 'Cover' : String(page);
-      state.isLoadingPage = false;
-      state.pageOverlayVisible = true;
-      render();
-      clearTimeout(overlayTimer);
-      overlayTimer = setTimeout(() => {
-        state.pageOverlayVisible = false;
-        syncPageOverlay();
-      }, 500);
-    };
-
-    const remaining = Math.max(0, MIN_LOADING_RING_MS - (Date.now() - lastPageTurnAt));
-    if (remaining > 0) {
-      setTimeout(finish, remaining);
-      return;
-    }
-
-    finish();
+    applyLoadedState();
+    state.pageOverlay = page === 0 ? 'Cover' : String(page);
+    state.isLoadingPage = false;
+    state.pageOverlayVisible = true;
+    render();
+    clearTimeout(overlayTimer);
+    overlayTimer = setTimeout(() => {
+      state.pageOverlayVisible = false;
+      syncPageOverlay();
+    }, 500);
   }
 
   function showPage(page) {
@@ -247,7 +244,6 @@
       const pages = getSpreadPages(page);
       const label = pages.length === 2 ? pages[0] + '-' + pages[1] : pageLabelFor(pages[0]);
       state.pageLabel = label + ' / ' + COMIC.totalDisplayPages;
-      state.imgSrc = '';
       Promise.all(pages.map((p) => loadImage(pageUrl(p)))).then((imgs) => {
         completePageLoad(page, () => {
           state.spreadSrcs = imgs.map((i) => i.src);
@@ -258,7 +254,6 @@
     } else {
       const src = pageUrl(page);
       state.pageLabel = pageLabelFor(page) + ' / ' + COMIC.totalDisplayPages;
-      state.spreadSrcs = ['', ''];
       loadImage(src).then((img) => {
         completePageLoad(page, () => {
           state.imgSrc = img.src;
@@ -268,8 +263,6 @@
       }).catch(() => {});
     }
 
-    state.imgSrc = '';
-    state.spreadSrcs = ['', ''];
     if (viewerRef) viewerRef.scrollTop = 0;
     persist();
     pushUrl(true);
@@ -370,7 +363,7 @@
           <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:#334155;color:white;border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
         </div>
 
-        ${toolbarToggleShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:88px;height:22px;padding:0 14px;border-radius:0 0 12px 12px;border:none;border-bottom:1px solid rgba(148,163,184,0.18);border-left:1px solid rgba(148,163,184,0.18);border-right:1px solid rgba(148,163,184,0.18);background:rgba(15,23,42,0.82);color:rgba(148,163,184,0.9);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;">▼ menu</button>` : ''}
+        ${toolbarToggleShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid rgba(148,163,184,0.18);border-left:1px solid rgba(148,163,184,0.18);border-right:1px solid rgba(148,163,184,0.18);background:rgba(15,23,42,0.82);color:rgba(148,163,184,0.9);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:${state.zoomDimmed ? 0.36 : 0.8};">▼ menu</button>` : ''}
       </div>`;
 
     viewerRef = document.getElementById('viewer');
@@ -378,6 +371,7 @@
     zoomControlsRef = document.getElementById('zoom-controls');
     sideArrowLeftRef = document.getElementById('side-arrow-left');
     sideArrowRightRef = document.getElementById('side-arrow-right');
+    toolbarToggleRef = document.getElementById('toolbar-toggle');
     pageOverlayRef = document.getElementById('page-overlay');
     const toolbar = document.getElementById('toolbar');
     const zoomRange = document.getElementById('zoom-range');
@@ -452,6 +446,7 @@
     syncToolbarChrome();
     syncZoomControlsOpacity();
     syncSideArrowOpacity();
+    syncToolbarToggleOpacity();
     syncPageOverlay();
   }
 

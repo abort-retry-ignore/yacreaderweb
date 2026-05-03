@@ -611,7 +611,7 @@ async function proxyComicPage(req, res, libraryId, comicId, pageNum) {
     const result = await fetchComicPageBuffer(libraryId, comicId, upstreamPageNum, requestId);
     res.writeHead(200, {
       'Content-Type': result.contentType,
-      'Cache-Control': 'public, max-age=300'
+      'Cache-Control': 'public, max-age=14400'
     });
     res.end(result.body);
   } catch (error) {
