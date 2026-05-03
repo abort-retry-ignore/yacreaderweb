@@ -63,6 +63,40 @@ function pageHead(title, themeColor = '#08110b') {
   <title>${title}</title>`;
 }
 
+function renderComicReaderShell({ title, backUrl, pageLabel, toolbarShown, toolbarPinned, zoom, spread, debug }) {
+  const overlayFontSize = Math.max(128, Math.min(360, 240));
+  return `
+      <div style="display:flex;flex-direction:column;height:100vh;background:#000;overflow:hidden">
+        <div id="toolbar" style="position:fixed;top:0;left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:rgba(15,23,42,0.96);border-bottom:${toolbarShown ? '1px solid #334155' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};">
+          ${toolbarShown ? `<a href="${backUrl}" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;">← Back</a>` : ''}
+          ${toolbarShown ? `<div style="flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${title}</div>` : ''}
+          ${toolbarShown ? `<button data-action="prev" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">◀</button>` : ''}
+          ${toolbarShown ? `<span style="min-width:90px;text-align:center;color:#94a3b8;font-size:13px;">${pageLabel}</span>` : ''}
+          ${toolbarShown ? `<button data-action="next" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">▶</button>` : ''}
+          ${toolbarShown ? `<button data-action="spread" style="background:#475569;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">${spread ? 'Spread' : 'Single'}</button>` : ''}
+          ${toolbarShown ? `<button data-action="fit" style="background:#475569;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">${zoom > 100 ? 'Fit Width' : 'Fit Screen'}</button>` : ''}
+          ${toolbarShown ? `<button data-action="pin" style="background:${toolbarPinned ? '#0f766e' : '#334155'};color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;min-width:28px;">${toolbarPinned ? '📌' : '📍'}</button>` : ''}
+        </div>
+
+        <div id="viewer" style="position:relative;flex:1;overflow:${zoom > 100 ? 'auto' : 'hidden'};background:#000;display:flex;align-items:${zoom > 100 ? 'flex-start' : 'center'};justify-content:center;cursor:pointer;min-height:0;">
+          <div id="side-arrow-left" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);opacity:0.42;transition:opacity 200ms ease;text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&lt;</div>
+          <div id="side-arrow-right" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);opacity:0.42;transition:opacity 200ms ease;text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&gt;</div>
+          <div style="display:flex;align-items:center;justify-content:center;min-width:${zoom > 100 ? 'max-content' : '100%'};min-height:${zoom > 100 ? 'max-content' : '100%'};padding:16px;"></div>
+        </div>
+
+        <div id="page-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:9;opacity:0;transition:opacity 500ms ease, background 200ms ease;background:transparent;color:rgba(255,255,255,0.68);text-shadow:0 10px 30px rgba(0,0,0,0.7);font-size:${overlayFontSize}px;font-weight:800;letter-spacing:-0.05em;"></div>
+
+        <div id="zoom-controls" style="position:fixed;right:12px;top:50%;transform:translateY(-50%);z-index:10;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 8px;border-radius:999px;background:rgba(15,23,42,0.88);border:1px solid rgba(148,163,184,0.2);box-shadow:0 12px 30px rgba(0,0,0,0.35);opacity:0.8;transition:opacity 200ms ease;">
+          <button id="zoom-in" style="width:30px;height:30px;padding:0;border-radius:999px;background:#334155;color:white;border:none;cursor:pointer;font-size:16px;line-height:1;">+</button>
+          <input id="zoom-range" type="range" min="100" max="300" step="10" value="${zoom}" style="writing-mode:vertical-lr;direction:rtl;width:28px;height:180px;accent-color:#60a5fa;">
+          <div style="min-width:42px;text-align:center;color:#cbd5e1;font-size:11px;">${zoom}%</div>
+          <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:#334155;color:white;border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
+        </div>
+
+        ${!toolbarShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid rgba(148,163,184,0.18);border-left:1px solid rgba(148,163,184,0.18);border-right:1px solid rgba(148,163,184,0.18);background:rgba(15,23,42,0.82);color:rgba(148,163,184,0.9);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:0.8;">▼ menu</button>` : ''}
+      </div>`;
+}
+
 async function serveStaticAsset(res, assetPath) {
   const normalized = path.normalize(assetPath).replace(/^\.+[\/\\]/, '');
   const fullPath = path.join(PUBLIC_DIR, normalized);
@@ -546,6 +580,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
     const coverHash = comicInfo.hash || '';
     const toolbarStorageKey = `webreader_toolbar_pinned_${libraryId}_${comicId}`;
     const title = escapeHtml(comicInfo.title || comicInfo.file_name || 'Comic');
+    const pageLabel = `${safePage === 0 ? 'Cover' : `Page ${safePage}`} / ${totalDisplayPages}`;
 
     const html = `<!doctype html>
 <html lang="en">
@@ -573,7 +608,17 @@ async function renderComicReader(req, res, libraryId, comicId) {
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">${renderComicReaderShell({
+    title,
+    backUrl: `/libraries/${encodeURIComponent(libraryId)}/folders/1`,
+    pageLabel,
+    toolbarShown: initialToolbarPinned,
+    toolbarPinned: initialToolbarPinned,
+    zoom: initialZoomLevel,
+    spread: spreadMode,
+    totalDisplayPages,
+    debug: DEBUG,
+  })}</div>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {});
