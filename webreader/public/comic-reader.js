@@ -8,11 +8,11 @@
 
   const app = document.getElementById('app');
   const state = {
-    page: 0,
+    page: COMIC.initialPage,
     spread: COMIC.initialSpread,
     zoom: COMIC.initialZoom,
-    toolbarVisible: true,
-    toolbarPinned: false,
+    toolbarPinned: COMIC.initialToolbarPinned !== false,
+    toolbarVisible: COMIC.initialToolbarPinned !== false,
     imgSrc: '',
     imgNaturalSize: { w: 0, h: 0 },
     spreadSrcs: ['', ''],
@@ -20,15 +20,10 @@
     pageLabel: '',
     pageOverlay: '',
     pageOverlayVisible: false,
+    isLoadingPage: false,
     zoomDimmed: false,
   };
 
-  try { state.toolbarPinned = localStorage.getItem(COMIC.toolbarKey) === '1'; } catch {}
-  try {
-    const stored = localStorage.getItem(COMIC.toolbarVisibleKey);
-    if (stored === '0') state.toolbarVisible = false;
-    if (stored === '1') state.toolbarVisible = true;
-  } catch {}
   if (COMIC.allowResume) {
     try {
       const saved = JSON.parse(localStorage.getItem(COMIC.progressKey) || 'null');
@@ -39,10 +34,34 @@
   }
 
   let viewerRef = null;
+  let toolbarRef = null;
   let zoomControlsRef = null;
   let pageOverlayRef = null;
   let overlayTimer = null;
+  let toolbarTimer = null;
   let zoomTimer = null;
+  let lastPageTurnAt = 0;
+  let pointerRevealAnchor = null;
+  let lastPointerPosition = null;
+  const MIN_LOADING_RING_MS = 250;
+
+  function canAutoRevealToolbar() {
+    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  }
+
+  function usesTouchToolbarToggle() {
+    return !canAutoRevealToolbar();
+  }
+
+  function syncToolbarChrome() {
+    if (!toolbarRef) return;
+    const visible = state.toolbarPinned || state.toolbarVisible;
+    toolbarRef.style.height = visible ? '36px' : '0';
+    toolbarRef.style.opacity = visible ? '1' : '0';
+    toolbarRef.style.padding = visible ? '0 8px' : '0';
+    toolbarRef.style.borderBottom = visible ? '1px solid #334155' : 'none';
+    toolbarRef.style.pointerEvents = visible ? 'auto' : 'none';
+  }
 
   function syncZoomControlsOpacity() {
     if (!zoomControlsRef) return;
@@ -51,7 +70,12 @@
 
   function syncPageOverlay() {
     if (!pageOverlayRef) return;
-    pageOverlayRef.textContent = state.pageOverlay;
+    if (state.isLoadingPage) {
+      pageOverlayRef.innerHTML = '<div id="loading-ring" class="loading-ring" role="status" aria-label="Loading page"></div>';
+    } else {
+      pageOverlayRef.textContent = state.pageOverlay;
+    }
+    pageOverlayRef.style.background = state.isLoadingPage ? 'radial-gradient(circle, rgba(15,23,42,0.34) 0%, rgba(0,0,0,0) 58%)' : 'transparent';
     pageOverlayRef.style.opacity = state.pageOverlayVisible ? '1' : '0';
   }
 
@@ -68,6 +92,26 @@
     state.zoomDimmed = false;
     scheduleZoomFade(delay);
     if (wasDimmed) syncZoomControlsOpacity();
+  }
+
+  function scheduleToolbarFade(delay = 1000) {
+    clearTimeout(toolbarTimer);
+    toolbarTimer = setTimeout(() => {
+      if (state.toolbarPinned) return;
+      state.toolbarVisible = false;
+      syncToolbarChrome();
+    }, delay);
+  }
+
+  function revealToolbar(delay = 1000) {
+    if (!canAutoRevealToolbar() || state.isLoadingPage) return;
+    const wasHidden = !state.toolbarPinned && !state.toolbarVisible;
+    if (!state.toolbarPinned) {
+      state.toolbarVisible = true;
+      syncToolbarChrome();
+      scheduleToolbarFade(delay);
+    }
+    if (wasHidden) syncToolbarChrome();
   }
 
   function pageUrl(page) {
@@ -110,11 +154,18 @@
     });
   }
 
+  function prefetchImage(src) {
+    if (!src) return;
+    const img = new Image();
+    img.src = src;
+  }
+
   function pushUrl(replace = false) {
     const url = new URL(window.location);
     url.searchParams.set('page', String(state.page));
     url.searchParams.set('spread', state.spread ? '1' : '0');
     url.searchParams.set('zoom', String(state.zoom));
+    url.searchParams.set('pin', state.toolbarPinned ? '1' : '0');
     if (replace) window.history.replaceState({}, '', url);
     else window.history.pushState({}, '', url);
   }
@@ -146,16 +197,42 @@
     return Object.entries(style).map(([key, value]) => `${key.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}:${value}`).join(';');
   }
 
+  function completePageLoad(page, applyLoadedState) {
+    const finish = () => {
+      applyLoadedState();
+      state.pageOverlay = page === 0 ? 'Cover' : String(page);
+      state.isLoadingPage = false;
+      state.pageOverlayVisible = true;
+      render();
+      clearTimeout(overlayTimer);
+      overlayTimer = setTimeout(() => {
+        state.pageOverlayVisible = false;
+        syncPageOverlay();
+      }, 500);
+    };
+
+    const remaining = Math.max(0, MIN_LOADING_RING_MS - (Date.now() - lastPageTurnAt));
+    if (remaining > 0) {
+      setTimeout(finish, remaining);
+      return;
+    }
+
+    finish();
+  }
+
   function showPage(page) {
-    state.pageOverlay = page === 0 ? 'Cover' : String(page);
+    lastPageTurnAt = Date.now();
+    pointerRevealAnchor = lastPointerPosition;
+    if (!state.toolbarPinned) {
+      state.toolbarVisible = false;
+      syncToolbarChrome();
+    }
+    state.pageOverlay = '';
     state.pageOverlayVisible = true;
+    state.isLoadingPage = true;
     state.zoomDimmed = false;
 
     clearTimeout(overlayTimer);
-    overlayTimer = setTimeout(() => {
-      state.pageOverlayVisible = false;
-      syncPageOverlay();
-    }, 1000);
     scheduleZoomFade(1000);
 
     if (state.spread && page > 0) {
@@ -164,21 +241,27 @@
       state.pageLabel = label + ' / ' + COMIC.totalDisplayPages;
       state.imgSrc = '';
       Promise.all(pages.map((p) => loadImage(pageUrl(p)))).then((imgs) => {
-        state.spreadSrcs = imgs.map((i) => i.src);
-        state.spreadNaturalSizes = imgs.map((i) => ({ w: i.naturalWidth, h: i.naturalHeight }));
-        render();
+        completePageLoad(page, () => {
+          state.spreadSrcs = imgs.map((i) => i.src);
+          state.spreadNaturalSizes = imgs.map((i) => ({ w: i.naturalWidth, h: i.naturalHeight }));
+        });
+        prefetchImage(pageUrl(Math.min(page + (state.spread ? 2 : 1), COMIC.totalDisplayPages - 1)));
       }).catch(() => {});
     } else {
       const src = pageUrl(page);
       state.pageLabel = pageLabelFor(page) + ' / ' + COMIC.totalDisplayPages;
       state.spreadSrcs = ['', ''];
       loadImage(src).then((img) => {
-        state.imgSrc = img.src;
-        state.imgNaturalSize = { w: img.naturalWidth, h: img.naturalHeight };
-        render();
+        completePageLoad(page, () => {
+          state.imgSrc = img.src;
+          state.imgNaturalSize = { w: img.naturalWidth, h: img.naturalHeight };
+        });
+        prefetchImage(pageUrl(Math.min(page + (state.spread ? 2 : 1), COMIC.totalDisplayPages - 1)));
       }).catch(() => {});
     }
 
+    state.imgSrc = '';
+    state.spreadSrcs = ['', ''];
     if (viewerRef) viewerRef.scrollTop = 0;
     persist();
     pushUrl(true);
@@ -202,16 +285,24 @@
 
   function togglePin() {
     state.toolbarPinned = !state.toolbarPinned;
-    try {
-      if (state.toolbarPinned) localStorage.setItem(COMIC.toolbarKey, '1');
-      else localStorage.removeItem(COMIC.toolbarKey);
-    } catch {}
+    if (state.toolbarPinned) {
+      state.toolbarVisible = true;
+    }
+    if (!state.toolbarPinned) {
+      state.toolbarVisible = false;
+      scheduleToolbarFade(1200);
+    }
+    syncToolbarChrome();
+    pushUrl(true);
     render();
   }
 
   function toggleToolbarVisible() {
+    if (state.toolbarPinned) return;
     state.toolbarVisible = !state.toolbarVisible;
-    try { localStorage.setItem(COMIC.toolbarVisibleKey, state.toolbarVisible ? '1' : '0'); } catch {}
+    syncToolbarChrome();
+    if (!usesTouchToolbarToggle() && state.toolbarVisible) scheduleToolbarFade(1000);
+    pushUrl(true);
     render();
   }
 
@@ -226,6 +317,7 @@
     const showSpread = state.spread && state.spreadSrcs[0];
     const imgStyle = showSpread ? {} : computeImgStyle(state.imgNaturalSize.w, state.imgNaturalSize.h);
     const toolbarShown = state.toolbarPinned || state.toolbarVisible;
+    const touchToolbarToggle = !state.toolbarPinned && usesTouchToolbarToggle();
     const zoomControlStyle = [
       'position:fixed', 'right:12px', 'top:50%', 'transform:translateY(-50%)',
       'z-index:10', 'display:flex', 'flex-direction:column', 'align-items:center',
@@ -238,7 +330,7 @@
 
     app.innerHTML = `
       <div style="display:flex;flex-direction:column;height:100vh;background:#000;overflow:hidden">
-        <div id="toolbar" style="height:${toolbarShown ? '36px' : '0'};overflow:hidden;flex-shrink:0;transition:height 160ms ease;background:rgba(15,23,42,0.96);border-bottom:${toolbarShown ? '1px solid #334155' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;">
+        <div id="toolbar" style="height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;flex-shrink:0;transition:height 160ms ease, opacity 200ms ease;background:rgba(15,23,42,0.96);border-bottom:${toolbarShown ? '1px solid #334155' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};">
           ${toolbarShown ? `<a href="${COMIC.backUrl}" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;">← Back</a>` : ''}
           ${toolbarShown ? `<div style="flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${COMIC.title}</div>` : ''}
           ${toolbarShown ? `<button data-action="prev" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">◀</button>` : ''}
@@ -262,7 +354,7 @@
           </div>
         </div>
 
-        <div id="page-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:9;opacity:${state.pageOverlayVisible ? 1 : 0};transition:opacity 1000ms ease;color:rgba(255,255,255,0.28);text-shadow:0 10px 30px rgba(0,0,0,0.7);font-size:${Math.max(128, Math.min(Math.min(window.innerWidth * 0.35, window.innerHeight * 0.45), 360))}px;font-weight:800;letter-spacing:-0.05em;">${state.pageOverlay}</div>
+        <div id="page-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:9;opacity:${state.pageOverlayVisible ? 1 : 0};transition:opacity 500ms ease, background 200ms ease;background:${state.isLoadingPage ? 'radial-gradient(circle, rgba(15,23,42,0.34) 0%, rgba(0,0,0,0) 58%)' : 'transparent'};color:rgba(255,255,255,0.68);text-shadow:0 10px 30px rgba(0,0,0,0.7);font-size:${Math.max(128, Math.min(Math.min(window.innerWidth * 0.35, window.innerHeight * 0.45), 360))}px;font-weight:800;letter-spacing:-0.05em;">${state.isLoadingPage ? '<div id="loading-ring" class="loading-ring" role="status" aria-label="Loading page"></div>' : state.pageOverlay}</div>
 
         <div id="zoom-controls" style="${zoomControlStyle}">
           <button id="zoom-in" style="width:30px;height:30px;padding:0;border-radius:999px;background:#334155;color:white;border:none;cursor:pointer;font-size:16px;line-height:1;">+</button>
@@ -271,10 +363,12 @@
           <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:#334155;color:white;border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
         </div>
 
-        ${!state.toolbarPinned && !state.toolbarVisible ? `<div id="toolbar-handle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);width:72px;height:10px;border-radius:0 0 10px 10px;background:rgba(148,163,184,0.18);z-index:20;cursor:pointer;"></div>` : ''}
+        ${!state.toolbarPinned && !state.toolbarVisible && !touchToolbarToggle ? `<div id="toolbar-handle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);width:72px;height:10px;border-radius:0 0 10px 10px;background:rgba(148,163,184,0.18);z-index:20;cursor:pointer;"></div>` : ''}
+        ${touchToolbarToggle ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:88px;height:22px;padding:0 14px;border-radius:0 0 12px 12px;border:none;border-bottom:1px solid rgba(148,163,184,0.18);border-left:1px solid rgba(148,163,184,0.18);border-right:1px solid rgba(148,163,184,0.18);background:rgba(15,23,42,0.82);color:rgba(148,163,184,0.9);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;">${state.toolbarVisible ? '▲ hide' : '▼ menu'}</button>` : ''}
       </div>`;
 
     viewerRef = document.getElementById('viewer');
+    toolbarRef = document.getElementById('toolbar');
     zoomControlsRef = document.getElementById('zoom-controls');
     pageOverlayRef = document.getElementById('page-overlay');
     const toolbar = document.getElementById('toolbar');
@@ -282,6 +376,7 @@
     const zoomIn = document.getElementById('zoom-in');
     const zoomOut = document.getElementById('zoom-out');
     const toolbarHandle = document.getElementById('toolbar-handle');
+    const toolbarToggle = document.getElementById('toolbar-toggle');
 
     if (viewerRef) {
       viewerRef.onclick = (e) => {
@@ -305,13 +400,33 @@
       if (pinBtn) pinBtn.onclick = togglePin;
     }
 
-    if (zoomRange) zoomRange.oninput = (e) => setZoom(Number(e.target.value));
+    if (zoomRange) {
+      zoomRange.oninput = (e) => {
+        const next = Number(e.target.value);
+        const scale = next / state.zoom;
+        const img = viewerRef && viewerRef.querySelector('img');
+        if (img) img.style.transform = `scale(${scale})`;
+        const zoomLabel = zoomControlsRef && zoomControlsRef.querySelector('div');
+        if (zoomLabel) zoomLabel.textContent = next + '%';
+      };
+      zoomRange.onchange = (e) => {
+        const img = viewerRef && viewerRef.querySelector('img');
+        if (img) img.style.transform = '';
+        setZoom(Number(e.target.value));
+      };
+    }
     if (zoomIn) zoomIn.onclick = () => setZoom(state.zoom + 10);
     if (zoomOut) zoomOut.onclick = () => setZoom(state.zoom - 10);
     if (toolbarHandle) toolbarHandle.onclick = () => {
-      if (!state.toolbarVisible) toggleToolbarVisible();
+      if (!state.toolbarVisible) {
+        state.toolbarVisible = true;
+        syncToolbarChrome();
+        scheduleToolbarFade(1000);
+      }
     };
+    if (toolbarToggle) toolbarToggle.onclick = toggleToolbarVisible;
 
+    syncToolbarChrome();
     syncZoomControlsOpacity();
     syncPageOverlay();
   }
@@ -348,13 +463,26 @@
     state.page = parseInt(url.searchParams.get('page') || '0', 10) || 0;
     state.spread = url.searchParams.get('spread') === '1';
     state.zoom = parseInt(url.searchParams.get('zoom') || '100', 10) || 100;
+    state.toolbarPinned = url.searchParams.get('pin') === '1';
+    state.toolbarVisible = state.toolbarPinned;
     showPage(state.page);
   });
 
-  window.addEventListener('pointermove', () => {
+  window.addEventListener('pointermove', (event) => {
+    if (event.pointerType && event.pointerType !== 'mouse') return;
+    const nextPosition = { x: event.clientX, y: event.clientY };
+    const moved = !lastPointerPosition || Math.hypot(nextPosition.x - lastPointerPosition.x, nextPosition.y - lastPointerPosition.y) > 8;
+    const movedSinceTurn = !pointerRevealAnchor || Math.hypot(nextPosition.x - pointerRevealAnchor.x, nextPosition.y - pointerRevealAnchor.y) > 24;
+    lastPointerPosition = nextPosition;
+    if (pointerRevealAnchor && !movedSinceTurn) {
+      return;
+    }
+    if (pointerRevealAnchor && movedSinceTurn) pointerRevealAnchor = null;
     revealZoomControls(1200);
+    revealToolbar(1200);
   }, { passive: true });
   window.addEventListener('touchstart', () => {
+    pointerRevealAnchor = null;
     revealZoomControls(1200);
   }, { passive: true });
 

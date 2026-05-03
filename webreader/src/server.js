@@ -61,6 +61,7 @@ function pageHead(title, themeColor = '#08110b') {
 async function serveStaticAsset(res, assetPath) {
   const normalized = path.normalize(assetPath).replace(/^\.+[\/\\]/, '');
   const fullPath = path.join(PUBLIC_DIR, normalized);
+  const shouldBypassCache = normalized === 'comic-reader.js' || normalized === 'service-worker.js' || normalized === 'manifest.webmanifest';
 
   if (!fullPath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -73,7 +74,7 @@ async function serveStaticAsset(res, assetPath) {
     const ext = path.extname(fullPath);
     res.writeHead(200, {
       'Content-Type': STATIC_CONTENT_TYPES[ext] || 'application/octet-stream',
-      'Cache-Control': 'public, max-age=3600'
+      'Cache-Control': shouldBypassCache ? 'no-store, max-age=0' : 'public, max-age=3600'
     });
     res.end(body);
     return true;
@@ -519,9 +520,11 @@ async function renderComicReader(req, res, libraryId, comicId) {
   const pageParam = urlObj.searchParams.get('page');
   const spreadParam = urlObj.searchParams.get('spread');
   const zoomParam = urlObj.searchParams.get('zoom');
+  const pinParam = urlObj.searchParams.get('pin');
   const resumeParam = urlObj.searchParams.get('resume');
   const requestedPage = parseInt(pageParam || '0', 10) || 0;
   const spreadMode = spreadParam === '1' || spreadParam === 'true';
+  const initialToolbarPinned = !(pinParam === '0' || pinParam === 'false');
   const allowResume = resumeParam === '1' || resumeParam === 'true';
   const parsedZoomLevel = Number.parseInt(zoomParam || '', 10);
   const initialZoomLevel = Math.max(100, Math.min(Number.isFinite(parsedZoomLevel) ? parsedZoomLevel : 100, 300));
@@ -549,6 +552,19 @@ async function renderComicReader(req, res, libraryId, comicId) {
     html, body { height: 100%; margin: 0; background: #000; color: #e2e8f0; overflow: hidden; }
     body { display: flex; flex-direction: column; }
     #app { display: contents; }
+    .loading-ring {
+      width: min(24vw, 176px);
+      height: min(24vw, 176px);
+      border-radius: 999px;
+      border: min(1.8vw, 14px) solid rgba(255, 255, 255, 0.26);
+      border-top-color: rgba(255, 255, 255, 1);
+      border-right-color: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -573,6 +589,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
       initialPage: safePage,
       initialSpread: spreadMode,
       initialZoom: initialZoomLevel,
+      initialToolbarPinned,
       allowResume,
     })};
   </script>
