@@ -32,9 +32,9 @@
   if (COMIC.allowResume) {
     try {
       const saved = JSON.parse(localStorage.getItem(COMIC.progressKey) || 'null');
-      if (saved && Number.isInteger(saved.page)) state.page = Math.max(0, Math.min(saved.page, COMIC.totalDisplayPages - 1));
-      if (saved && typeof saved.spread === 'boolean') state.spread = saved.spread;
-      if (saved && Number.isInteger(saved.zoom)) state.zoom = Math.max(100, Math.min(saved.zoom, 300));
+      if (saved && Number.isInteger(saved.page) && !COMIC.hasExplicitPage) state.page = Math.max(0, Math.min(saved.page, COMIC.totalDisplayPages - 1));
+      if (saved && typeof saved.spread === 'boolean' && !COMIC.hasExplicitSpread) state.spread = saved.spread;
+      if (saved && Number.isInteger(saved.zoom) && !COMIC.hasExplicitZoom) state.zoom = Math.max(100, Math.min(saved.zoom, 300));
     } catch {}
   }
 
@@ -59,7 +59,7 @@
     toolbarRef.style.height = visible ? '36px' : '0';
     toolbarRef.style.opacity = visible ? '1' : '0';
     toolbarRef.style.padding = visible ? '0 8px' : '0';
-    toolbarRef.style.borderBottom = visible ? '1px solid #334155' : 'none';
+    toolbarRef.style.borderBottom = visible ? '1px solid var(--reader-toolbar-border)' : 'none';
     toolbarRef.style.pointerEvents = visible ? 'auto' : 'none';
   }
 
@@ -99,7 +99,7 @@
     } else {
       pageOverlayRef.textContent = state.pageOverlay;
     }
-    pageOverlayRef.style.background = state.isLoadingPage ? 'radial-gradient(circle, rgba(15,23,42,0.34) 0%, rgba(0,0,0,0) 58%)' : 'transparent';
+    pageOverlayRef.style.background = state.isLoadingPage ? 'radial-gradient(circle, color-mix(in srgb, var(--reader-toolbar-bg) 36%, transparent) 0%, rgba(0,0,0,0) 58%)' : 'transparent';
     pageOverlayRef.style.opacity = state.pageOverlayVisible ? '1' : '0';
   }
 
@@ -327,23 +327,24 @@
       'position:fixed', 'right:12px', 'top:50%', 'transform:translateY(-50%)',
       'z-index:10', 'display:flex', 'flex-direction:column', 'align-items:center',
       'gap:8px', 'padding:10px 8px', 'border-radius:999px',
-      'background:rgba(15,23,42,0.88)', 'border:1px solid rgba(148,163,184,0.2)',
+      'background:var(--reader-chrome-bg)', 'border:1px solid var(--reader-toolbar-border)',
       'box-shadow:0 12px 30px rgba(0,0,0,0.35)',
+      'backdrop-filter:blur(12px)',
       'opacity:' + (state.zoomDimmed ? 0.36 : 0.8),
       'transition:opacity 200ms ease',
     ].join(';');
 
     app.innerHTML = `
       <div style="display:flex;flex-direction:column;height:100vh;background:#000;overflow:hidden">
-        <div id="toolbar" style="position:fixed;top:0;left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:rgba(15,23,42,0.96);border-bottom:${toolbarShown ? '1px solid #334155' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};">
-          ${toolbarShown ? `<a href="${COMIC.backUrl}" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;">← Back</a>` : ''}
+        <div id="toolbar" style="position:fixed;top:0;left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:var(--reader-toolbar-bg);border-bottom:${toolbarShown ? '1px solid var(--reader-toolbar-border)' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};backdrop-filter:blur(12px);">
+          ${toolbarShown ? `<a href="${COMIC.backUrl}" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;">← Back</a>` : ''}
           ${toolbarShown ? `<div style="flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${COMIC.title}</div>` : ''}
-          ${toolbarShown ? `<button data-action="prev" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">◀</button>` : ''}
-          ${toolbarShown ? `<span style="min-width:90px;text-align:center;color:#94a3b8;font-size:13px;">${state.pageLabel}</span>` : ''}
-          ${toolbarShown ? `<button data-action="next" style="background:#334155;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">▶</button>` : ''}
-          ${toolbarShown ? `<button data-action="spread" style="background:#475569;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">${state.spread ? 'Spread' : 'Single'}</button>` : ''}
-          ${toolbarShown ? `<button data-action="fit" style="background:#475569;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">${state.zoom > 100 ? 'Fit Width' : 'Fit Screen'}</button>` : ''}
-          ${toolbarShown ? `<button data-action="pin" style="background:${state.toolbarPinned ? '#0f766e' : '#334155'};color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;min-width:28px;">${state.toolbarPinned ? '📌' : '📍'}</button>` : ''}
+          ${toolbarShown ? `<button data-action="prev" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">◀</button>` : ''}
+          ${toolbarShown ? `<span style="min-width:90px;text-align:center;color:var(--reader-text-dim);font-size:13px;">${state.pageLabel}</span>` : ''}
+          ${toolbarShown ? `<button data-action="next" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">▶</button>` : ''}
+          ${toolbarShown ? `<button data-action="spread" style="background:var(--reader-button-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">${state.spread ? 'Spread' : 'Single'}</button>` : ''}
+          ${toolbarShown ? `<button data-action="fit" style="background:var(--reader-button-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">${state.zoom > 100 ? 'Fit Width' : 'Fit Screen'}</button>` : ''}
+          ${toolbarShown ? `<button data-action="pin" style="background:${state.toolbarPinned ? 'var(--reader-button-active-bg)' : 'var(--reader-button-secondary-bg)'};color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;min-width:28px;">${state.toolbarPinned ? '📌' : '📍'}</button>` : ''}
         </div>
 
         <div id="viewer" style="position:relative;flex:1;overflow:${state.zoom > 100 ? 'auto' : 'hidden'};background:#000;display:flex;align-items:${state.zoom > 100 ? 'flex-start' : 'center'};justify-content:center;cursor:pointer;min-height:0;">
@@ -359,16 +360,16 @@
           </div>
         </div>
 
-        <div id="page-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:9;opacity:${state.pageOverlayVisible ? 1 : 0};transition:opacity 500ms ease, background 200ms ease;background:${state.isLoadingPage ? 'radial-gradient(circle, rgba(15,23,42,0.34) 0%, rgba(0,0,0,0) 58%)' : 'transparent'};color:rgba(255,255,255,0.68);text-shadow:0 10px 30px rgba(0,0,0,0.7);font-size:${Math.max(128, Math.min(Math.min(window.innerWidth * 0.35, window.innerHeight * 0.45), 360))}px;font-weight:800;letter-spacing:-0.05em;">${state.isLoadingPage ? '<div id="loading-ring" class="loading-ring" role="status" aria-label="Loading page"></div>' : state.pageOverlay}</div>
+        <div id="page-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:9;opacity:${state.pageOverlayVisible ? 1 : 0};transition:opacity 500ms ease, background 200ms ease;background:${state.isLoadingPage ? 'radial-gradient(circle, color-mix(in srgb, var(--reader-toolbar-bg) 36%, transparent) 0%, rgba(0,0,0,0) 58%)' : 'transparent'};color:rgba(255,255,255,0.68);text-shadow:0 10px 30px rgba(0,0,0,0.7);font-size:${Math.max(128, Math.min(Math.min(window.innerWidth * 0.35, window.innerHeight * 0.45), 360))}px;font-weight:800;letter-spacing:-0.05em;">${state.isLoadingPage ? '<div id="loading-ring" class="loading-ring" role="status" aria-label="Loading page"></div>' : state.pageOverlay}</div>
 
         <div id="zoom-controls" style="${zoomControlStyle}">
-          <button id="zoom-in" style="width:30px;height:30px;padding:0;border-radius:999px;background:#334155;color:white;border:none;cursor:pointer;font-size:16px;line-height:1;">+</button>
-          <input id="zoom-range" type="range" min="100" max="300" step="10" value="${state.zoom}" style="writing-mode:vertical-lr;direction:rtl;width:28px;height:180px;accent-color:#60a5fa;">
-          <div style="min-width:42px;text-align:center;color:#cbd5e1;font-size:11px;">${state.zoom}%</div>
-          <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:#334155;color:white;border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
+          <button id="zoom-in" style="width:30px;height:30px;padding:0;border-radius:999px;background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;cursor:pointer;font-size:16px;line-height:1;">+</button>
+          <input id="zoom-range" type="range" min="100" max="300" step="10" value="${state.zoom}" style="writing-mode:vertical-lr;direction:rtl;width:28px;height:180px;accent-color:var(--reader-range-accent);">
+          <div style="min-width:42px;text-align:center;color:var(--reader-text-dim);font-size:11px;">${state.zoom}%</div>
+          <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
         </div>
 
-        ${toolbarToggleShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid rgba(148,163,184,0.18);border-left:1px solid rgba(148,163,184,0.18);border-right:1px solid rgba(148,163,184,0.18);background:rgba(15,23,42,0.82);color:rgba(148,163,184,0.9);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:${state.zoomDimmed ? 0.36 : 0.8};">▼ menu</button>` : ''}
+        ${toolbarToggleShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid var(--reader-toolbar-border);border-left:1px solid var(--reader-toolbar-border);border-right:1px solid var(--reader-toolbar-border);background:var(--reader-chrome-bg-soft);color:var(--reader-text-dim);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:${state.zoomDimmed ? 0.36 : 0.8};backdrop-filter:blur(12px);">▼ menu</button>` : ''}
       </div>`;
 
     viewerRef = document.getElementById('viewer');
@@ -478,7 +479,8 @@
       toggleToolbarVisible();
     }
     if (e.key === 'Escape') {
-      if (state.toolbarVisible) toggleToolbarVisible();
+      if (window.matchMedia('(max-width: 900px)').matches) return;
+      window.location.href = COMIC.escapeUrl || COMIC.backUrl || '/';
     }
   });
 
