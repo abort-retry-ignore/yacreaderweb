@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    directory: '/.github/workflows'
+    schedule:
+      interval: 'daily'
+
+  - package-ecosystem: 'docker'
+    directory: '/unarr'
+    schedule:
+      interval: 'daily'
+
+  - package-ecosystem: 'docker'
+    directory: '/p7zip'
+    schedule:
+      interval: 'daily'

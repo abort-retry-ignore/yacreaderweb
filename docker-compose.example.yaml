@@ -1,0 +1,13 @@
+services:
+  webreader:
+    container_name: YACReaderWebreader
+    image: ghcr.io/abort-retry-ignore/yacreaderweb:latest
+    environment:
+      WEBREADER_PORT: ${WEBREADER_INTERNAL_PORT:-3000}
+      YACR_SERVER_URL: ${YACR_SERVER_URL:-http://host.docker.internal:60000}
+      WEBREADER_DEBUG: ${WEBREADER_DEBUG:-0}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${WEBREADER_PORT:-3100}:${WEBREADER_INTERNAL_PORT:-3000}"
+    restart: unless-stopped
