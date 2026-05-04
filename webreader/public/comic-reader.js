@@ -41,6 +41,7 @@
   let viewerRef = null;
   let toolbarRef = null;
   let zoomControlsRef = null;
+  let pageBarRef = null;
   let sideArrowLeftRef = null;
   let sideArrowRightRef = null;
   let toolbarToggleRef = null;
@@ -81,6 +82,11 @@
     zoomControlsRef.style.opacity = state.zoomDimmed ? '0.36' : '0.8';
   }
 
+  function syncPageBarOpacity() {
+    if (!pageBarRef) return;
+    pageBarRef.style.opacity = state.zoomDimmed ? '0' : '0.18';
+  }
+
   function syncSideArrowOpacity() {
     const opacity = state.zoomDimmed ? '0' : '0.42';
     if (sideArrowLeftRef) sideArrowLeftRef.style.opacity = opacity;
@@ -108,6 +114,7 @@
     zoomTimer = setTimeout(() => {
       state.zoomDimmed = true;
       syncZoomControlsOpacity();
+      syncPageBarOpacity();
       syncSideArrowOpacity();
       syncToolbarToggleOpacity();
     }, delay);
@@ -115,13 +122,14 @@
 
   function revealZoomControls(delay = 1000) {
     const wasDimmed = state.zoomDimmed;
-    state.zoomDimmed = false;
-    scheduleZoomFade(delay);
-    if (wasDimmed) {
-      syncZoomControlsOpacity();
-      syncSideArrowOpacity();
-      syncToolbarToggleOpacity();
-    }
+      state.zoomDimmed = false;
+      scheduleZoomFade(delay);
+      if (wasDimmed) {
+        syncZoomControlsOpacity();
+        syncPageBarOpacity();
+        syncSideArrowOpacity();
+        syncToolbarToggleOpacity();
+      }
   }
 
   function scheduleToolbarFade(delay = 1000) {
@@ -334,6 +342,16 @@
       'transition:opacity 200ms ease',
     ].join(';');
 
+    const pageBarStyle = [
+      'position:fixed', 'left:50%', 'bottom:10px', 'transform:translateX(-50%)',
+      'z-index:10', 'display:flex', 'align-items:center', 'gap:10px',
+      'width:min(72vw, 820px)', 'padding:8px 12px', 'border-radius:999px',
+      'background:transparent', 'border:1px solid transparent',
+      'opacity:' + (state.zoomDimmed ? 0 : 0.18),
+      'transition:opacity 200ms ease',
+      'pointer-events:auto',
+    ].join(';');
+
     app.innerHTML = `
       <div style="display:flex;flex-direction:column;height:100vh;background:#000;overflow:hidden">
         <div id="toolbar" style="position:fixed;top:0;left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:var(--reader-toolbar-bg);border-bottom:${toolbarShown ? '1px solid var(--reader-toolbar-border)' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};backdrop-filter:blur(12px);">
@@ -369,12 +387,18 @@
           <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
         </div>
 
+        <div id="page-bar" style="${pageBarStyle}">
+          <span style="min-width:70px;text-align:left;color:var(--reader-text-dim);font-size:11px;white-space:nowrap;">${state.pageLabel}</span>
+          <input id="page-range" type="range" min="0" max="${Math.max(0, COMIC.totalDisplayPages - 1)}" step="1" value="${state.page}" style="flex:1;height:18px;background:transparent;accent-color:var(--reader-range-accent);">
+        </div>
+
         ${toolbarToggleShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid var(--reader-toolbar-border);border-left:1px solid var(--reader-toolbar-border);border-right:1px solid var(--reader-toolbar-border);background:var(--reader-chrome-bg-soft);color:var(--reader-text-dim);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:${state.zoomDimmed ? 0.36 : 0.8};backdrop-filter:blur(12px);">▼ menu</button>` : ''}
       </div>`;
 
     viewerRef = document.getElementById('viewer');
     toolbarRef = document.getElementById('toolbar');
     zoomControlsRef = document.getElementById('zoom-controls');
+    pageBarRef = document.getElementById('page-bar');
     sideArrowLeftRef = document.getElementById('side-arrow-left');
     sideArrowRightRef = document.getElementById('side-arrow-right');
     toolbarToggleRef = document.getElementById('toolbar-toggle');
@@ -383,6 +407,7 @@
     const zoomRange = document.getElementById('zoom-range');
     const zoomIn = document.getElementById('zoom-in');
     const zoomOut = document.getElementById('zoom-out');
+    const pageRange = document.getElementById('page-range');
     const toolbarToggle = document.getElementById('toolbar-toggle');
 
     if (lastToolbarShown !== toolbarShown) {
@@ -447,10 +472,23 @@
     }
     if (zoomIn) zoomIn.onclick = () => setZoom(state.zoom + 10);
     if (zoomOut) zoomOut.onclick = () => setZoom(state.zoom - 10);
+    if (pageRange) {
+      pageRange.oninput = (e) => {
+        const next = Number(e.target.value);
+        const label = pageBarRef && pageBarRef.querySelector('span');
+        if (label) label.textContent = (next === 0 ? 'Cover' : 'Page ' + next) + ' / ' + COMIC.totalDisplayPages;
+      };
+      pageRange.onchange = (e) => {
+        const next = Number(e.target.value);
+        state.page = Math.max(0, Math.min(next, COMIC.totalDisplayPages - 1));
+        showPage(state.page);
+      };
+    }
     if (toolbarToggle) toolbarToggle.onclick = toggleToolbarVisible;
 
     syncToolbarChrome();
     syncZoomControlsOpacity();
+    syncPageBarOpacity();
     syncSideArrowOpacity();
     syncToolbarToggleOpacity();
     syncPageOverlay();
