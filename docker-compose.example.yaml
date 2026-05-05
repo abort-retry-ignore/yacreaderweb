@@ -3,11 +3,22 @@ services:
     container_name: YACReaderWebreader
     image: ghcr.io/abort-retry-ignore/yacreaderweb:latest
     environment:
-      WEBREADER_PORT: ${WEBREADER_INTERNAL_PORT:-3000}
+      # Internal listen port inside the container. Fixed at 3000.
+      WEBREADER_PORT: 3000
+
+      # Required. URL for your YACReaderLibraryServer backend.
       YACR_SERVER_URL: ${YACR_SERVER_URL:-http://host.docker.internal:60000}
+
+      # Optional. Set to 1 to enable debug logging.
       WEBREADER_DEBUG: ${WEBREADER_DEBUG:-0}
+
+      # Optional. If both username and password are set, all routes require login.
+      # If either value is empty, authentication is disabled.
+      WEBREADER_BASIC_AUTH_USERNAME: ${WEBREADER_BASIC_AUTH_USERNAME:-}
+      WEBREADER_BASIC_AUTH_PASSWORD: ${WEBREADER_BASIC_AUTH_PASSWORD:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${WEBREADER_PORT:-3100}:${WEBREADER_INTERNAL_PORT:-3000}"
+      # Optional. Host port mapping for the web UI.
+      - "${WEBREADER_PORT:-3100}:3000"
     restart: unless-stopped
