@@ -8,11 +8,258 @@ const JSZip = require('jszip');
 const PORT = Number.parseInt(process.env.WEBREADER_PORT || '3000', 10);
 const YACR_SERVER_URL = process.env.YACR_SERVER_URL || 'http://localhost:60000';
 const DEBUG = process.env.WEBREADER_DEBUG === '1';
+const BASIC_AUTH_USERNAME = process.env.WEBREADER_BASIC_AUTH_USERNAME || '';
+const BASIC_AUTH_PASSWORD = process.env.WEBREADER_BASIC_AUTH_PASSWORD || '';
+const BASIC_AUTH_ENABLED = BASIC_AUTH_USERNAME !== '' && BASIC_AUTH_PASSWORD !== '';
+const AUTH_COOKIE_NAME = 'webreader_auth';
 const ROOT_FOLDER_ID = '1';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 function debugLog(...args) {
   if (DEBUG) console.log(...args);
+}
+
+function timingSafeEqualString(a, b) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
+
+function createAuthCookieValue() {
+  return crypto.createHash('sha256').update(`${BASIC_AUTH_USERNAME}:${BASIC_AUTH_PASSWORD}`).digest('hex');
+}
+
+function parseCookies(req) {
+  const cookieHeader = req.headers.cookie || '';
+  return Object.fromEntries(cookieHeader.split(';').map((part) => part.trim()).filter(Boolean).map((part) => {
+    const separatorIndex = part.indexOf('=');
+    if (separatorIndex === -1) return [part, ''];
+    return [part.slice(0, separatorIndex), decodeURIComponent(part.slice(separatorIndex + 1))];
+  }));
+}
+
+function isAuthorized(req) {
+  if (!BASIC_AUTH_ENABLED) return true;
+  const cookies = parseCookies(req);
+  const authCookie = cookies[AUTH_COOKIE_NAME] || '';
+  const expected = createAuthCookieValue();
+  return timingSafeEqualString(authCookie, expected);
+}
+
+function setAuthCookie(res) {
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=${encodeURIComponent(createAuthCookieValue())}; Path=/; HttpOnly; SameSite=Lax`);
+}
+
+function clearAuthCookie(res) {
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+}
+
+function renderLoginPage({ username = '', error = '', next = '/' }) {
+  const activeTheme = 'matrix';
+  const errorHtml = error ? `<div class="login-error">${escapeHtml(error)}</div>` : '';
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    ${pageHead('Login - YACReaderWeb', WEB_THEMES[activeTheme].themeColor)}
+    <style>
+      :root { font-family: Inter, system-ui, sans-serif; color-scheme: dark; }
+      ${renderThemeCss()}
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); overflow: hidden; }
+      .login-shell {
+        min-height: 100vh;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: max(24px, calc(24px + var(--safe-area-top))) 24px max(24px, calc(24px + var(--safe-area-bottom)));
+        background:
+          radial-gradient(circle at 12% 18%, rgba(50,255,112,0.24), transparent 26%),
+          radial-gradient(circle at 82% 24%, rgba(255,138,61,0.28), transparent 22%),
+          radial-gradient(circle at 74% 72%, rgba(184,92,255,0.24), transparent 24%),
+          radial-gradient(circle at 28% 78%, rgba(84,172,255,0.22), transparent 26%),
+          linear-gradient(180deg, #040704 0%, #08110b 45%, #050805 100%);
+      }
+      .login-art {
+        position: absolute;
+        inset: -12%;
+        filter: blur(34px) saturate(1.25);
+        opacity: 0.95;
+        pointer-events: none;
+      }
+      .login-art::before,
+      .login-art::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+      }
+      .login-art::before {
+        background:
+          radial-gradient(circle at 14% 22%, rgba(50,255,112,0.42), transparent 18%),
+          radial-gradient(circle at 78% 16%, rgba(255,191,64,0.38), transparent 16%),
+          radial-gradient(circle at 82% 74%, rgba(184,92,255,0.36), transparent 19%),
+          radial-gradient(circle at 22% 78%, rgba(84,172,255,0.34), transparent 18%),
+          linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.08) 18%, transparent 27%, rgba(255,255,255,0.06) 36%, transparent 48%, rgba(255,255,255,0.08) 60%, transparent 72%);
+      }
+      .login-art::after {
+        background:
+          linear-gradient(100deg, transparent 0 8%, rgba(255,110,64,0.24) 8% 11%, transparent 11% 23%, rgba(74,222,128,0.22) 23% 27%, transparent 27% 44%, rgba(96,165,250,0.22) 44% 48%, transparent 48% 63%, rgba(216,180,254,0.22) 63% 67%, transparent 67% 100%),
+          linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.55));
+        mix-blend-mode: screen;
+      }
+      .login-panel {
+        position: relative;
+        width: min(100%, 460px);
+        padding: 28px;
+        border-radius: 28px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--bg-panel) 78%, rgba(0,0,0,0.34));
+        box-shadow: 0 28px 80px rgba(0,0,0,0.45);
+        backdrop-filter: blur(20px);
+      }
+      .login-kicker { margin: 0 0 10px; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.18em; }
+      .login-title { margin: 0; font-size: clamp(34px, 7vw, 52px); line-height: 0.95; }
+      .login-copy { margin: 12px 0 0; color: var(--text-dim); line-height: 1.5; }
+      .login-form { display: grid; gap: 14px; margin-top: 24px; }
+      .login-label { display: grid; gap: 8px; font-size: 13px; color: var(--text-dim); }
+      .login-input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--bg-card) 78%, rgba(0,0,0,0.18));
+        color: var(--text);
+        padding: 14px 16px;
+        font: inherit;
+      }
+      .login-input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 68%, transparent); outline-offset: 1px; }
+      .login-button {
+        border: none;
+        border-radius: 16px;
+        padding: 14px 18px;
+        font: inherit;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: #041108;
+        background: linear-gradient(135deg, #32ff70, #8bffb2 55%, #54acff 120%);
+        box-shadow: 0 12px 28px rgba(50,255,112,0.24);
+        cursor: pointer;
+      }
+      .login-error {
+        margin-top: 18px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(255,110,110,0.28);
+        background: rgba(110,18,18,0.34);
+        color: #ffd7d7;
+      }
+      .login-note { margin-top: 16px; color: var(--text-dim); font-size: 12px; }
+      @media (max-width: 640px) {
+        .login-panel { padding: 24px 20px; border-radius: 24px; }
+      }
+    </style>
+  </head>
+  <body class="theme-${activeTheme}">
+    <main class="login-shell">
+      <div class="login-art" aria-hidden="true"></div>
+      <section class="login-panel">
+        <h1 class="login-title">YACReaderWeb</h1>
+        <p class="login-copy">Credentials defined in your compose file</p>
+        ${errorHtml}
+        <form class="login-form" method="post" action="/login">
+          <input type="hidden" name="next" value="${escapeHtml(next)}">
+          <label class="login-label">Username
+            <input class="login-input" type="text" name="username" value="${escapeHtml(username)}" autocomplete="username" required>
+          </label>
+          <label class="login-label">Password
+            <input class="login-input" type="password" name="password" autocomplete="current-password" required>
+          </label>
+          <button class="login-button" type="submit">Enter Library</button>
+        </form>
+        <p class="login-note">Matrix shell outside, neon comic haze behind, no unauthenticated route access.</p>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
+function sendLoginRedirect(req, res) {
+  const target = req.url || '/';
+  const location = `/login?next=${encodeURIComponent(target)}`;
+  res.writeHead(302, { Location: location, 'Cache-Control': 'no-store, max-age=0' });
+  res.end();
+}
+
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (chunk) => {
+      chunks.push(chunk);
+      if (Buffer.concat(chunks).length > 1024 * 1024) {
+        reject(new Error('Request body too large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+async function handleLogin(req, res, url) {
+  if (!BASIC_AUTH_ENABLED) {
+    sendRedirect(res, '/');
+    return true;
+  }
+
+  const next = (() => {
+    const candidate = url.searchParams.get('next') || '/';
+    return candidate.startsWith('/') ? candidate : '/';
+  })();
+
+  if (req.method === 'GET') {
+    sendHtml(res, 200, renderLoginPage({ next }));
+    return true;
+  }
+
+  if (req.method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Method Not Allowed');
+    return true;
+  }
+
+  let body = '';
+  try {
+    body = await readRequestBody(req);
+  } catch (error) {
+    res.writeHead(413, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(error.message);
+    return true;
+  }
+
+  const form = new URLSearchParams(body);
+  const username = form.get('username') || '';
+  const password = form.get('password') || '';
+  const postNext = (() => {
+    const candidate = form.get('next') || '/';
+    return candidate.startsWith('/') ? candidate : '/';
+  })();
+
+  if (timingSafeEqualString(username, BASIC_AUTH_USERNAME) && timingSafeEqualString(password, BASIC_AUTH_PASSWORD)) {
+    setAuthCookie(res);
+    res.writeHead(302, { Location: postNext, 'Cache-Control': 'no-store, max-age=0' });
+    res.end();
+    return true;
+  }
+
+  sendHtml(res, 401, renderLoginPage({ username, error: 'Wrong username or password.', next: postNext }));
+  return true;
+}
+
+function handleLogout(res) {
+  clearAuthCookie(res);
+  res.writeHead(302, { Location: '/login', 'Cache-Control': 'no-store, max-age=0' });
+  res.end();
+  return true;
 }
 
 const APPLE_SPLASH_LINKS = [
@@ -325,6 +572,11 @@ function renderThemePicker(theme) {
   return `<label class="theme-control"><span>Theme</span><select data-theme-picker>${WEB_THEME_OPTIONS.map(([value, label]) => `<option value="${value}"${activeTheme === value ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`;
 }
 
+function renderLogoutButton() {
+  if (!BASIC_AUTH_ENABLED) return '';
+  return `<a class="logout-button" href="/logout">Logout</a>`;
+}
+
 function renderThemeCss() {
   return Object.entries(WEB_THEMES).map(([name, colors]) => `body.theme-${name}, html.theme-${name} { --theme-color:${colors.themeColor}; --bg:${colors.bg}; --bg-panel:${colors.panel}; --bg-card:${colors.card}; --bg-card-hover:${colors.cardHover}; --text:${colors.text}; --text-dim:${colors.textDim}; --accent:${colors.accent}; --border:${colors.border}; --shadow:${colors.shadow}; --reader-toolbar-bg:color-mix(in srgb, ${colors.panel} 92%, transparent); --reader-chrome-bg:color-mix(in srgb, ${colors.panel} 86%, transparent); --reader-chrome-bg-soft:color-mix(in srgb, ${colors.panel} 80%, transparent); --reader-button-bg:color-mix(in srgb, ${colors.cardHover} 84%, ${colors.accent} 16%); --reader-button-secondary-bg:color-mix(in srgb, ${colors.card} 84%, ${colors.accent} 16%); --reader-button-active-bg:color-mix(in srgb, ${colors.accent} 70%, ${colors.card} 30%); --reader-button-text:${colors.text}; --reader-toolbar-border:${colors.border}; --reader-text-dim:${colors.textDim}; --reader-range-accent:${colors.accent}; color-scheme:${name === 'light' ? 'light' : 'dark'}; }`).join('\n');
 }
@@ -418,6 +670,8 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
       .brand-copy { margin: 0 0 20px; color: var(--text-dim); }
       .theme-control { display:flex; flex-direction:column; gap:6px; margin-bottom:20px; color: var(--text-dim); font-size:13px; }
       .theme-control select { border:1px solid var(--border); background: var(--bg-card); color: var(--text); border-radius: 12px; padding: 10px 12px; }
+      .logout-button { display:inline-flex; align-items:center; justify-content:center; border-radius: 12px; padding: 10px 14px; border:1px solid var(--border); background: var(--bg-card); color: var(--text); font-size:13px; font-weight:700; }
+      .shell-sidebar .logout-button { margin-bottom: 20px; width: 100%; }
       .library-nav-title { font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color: var(--text-dim); margin: 0 0 10px; }
       .library-nav { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px; }
       .library-nav a { display:block; padding:10px 12px; border-radius: 12px; color: var(--text-dim); background: transparent; border: 1px solid transparent; }
@@ -459,6 +713,7 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
         .shell-main { padding: calc(18px + var(--safe-area-top) + var(--mobile-pwa-top-offset)) 18px calc(18px + var(--safe-area-bottom)); }
         .mobile-topbar { display:flex; flex-direction:column; gap:14px; margin-bottom:18px; }
         .mobile-topbar .theme-control { margin:0; }
+        .mobile-topbar .logout-button { width: fit-content; }
       }
       @media (max-width: 640px) {
         .library-grid { grid-template-columns: 1fr; }
@@ -498,6 +753,7 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
         <h1 class="brand">YACReaderWeb</h1>
         <p class="brand-copy">Library-first web shell for browsing comics, folders, and reader sessions.</p>
         ${renderThemePicker(activeTheme)}
+        ${renderLogoutButton()}
         <div class="library-nav-title">Libraries</div>
         <ul class="library-nav">${libraryLinks || '<li class="hint">No libraries found</li>'}</ul>
       </aside>
@@ -505,6 +761,7 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
         <div class="mobile-topbar">
           <h1 class="brand">YACReaderWeb</h1>
           ${renderThemePicker(activeTheme)}
+          ${renderLogoutButton()}
         </div>
         ${selectedLibrary ? `${breadcrumbHtml}<div class="hero"><div class="hero-copy"><div><h2>${escapeHtml(selectedLibrary.name)}</h2><p>${escapeHtml(selectedLibraryHint)}</p></div>${searchForm}</div></div><div class="section-label">${selectedLibrarySectionLabel}</div>${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}<div class="content-grid">${contentTiles || `<div class="hint">${searchResults ? 'No matches found' : 'No items in this folder'}</div>`}</div>` : `<div class="hero"><div><h2>Your libraries</h2><p>Pick a library to start browsing. Fast stats below are shallow counts from each library root.</p></div></div>${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}<div class="section-label">Available libraries</div><div class="library-grid">${libraryCards || '<div class="hint">No libraries found</div>'}</div>`}
       </section>
@@ -902,6 +1159,26 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
+  if (url.pathname === '/login') {
+    await handleLogin(req, res, url);
+    return;
+  }
+
+  if (url.pathname === '/logout') {
+    if (req.method !== 'GET') {
+      res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Method Not Allowed');
+      return;
+    }
+    handleLogout(res);
+    return;
+  }
+
+  if (!isAuthorized(req)) {
+    sendLoginRedirect(req, res);
+    return;
+  }
+
   if (req.method !== 'GET') {
     res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Method Not Allowed');
@@ -970,4 +1247,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   debugLog(`YACReaderWeb listening on port ${PORT}`);
   debugLog(`Using YACReader server ${YACR_SERVER_URL}`);
+  debugLog(`Basic auth ${BASIC_AUTH_ENABLED ? 'enabled' : 'disabled'}`);
 });
