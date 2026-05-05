@@ -54,20 +54,39 @@ function pageHead(title, themeColor = '#08110b') {
   <meta name="theme-color" content="${themeColor}">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="YACReaderWeb">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   ${APPLE_SPLASH_LINKS}
+  <style>
+    :root {
+      --safe-area-top: env(safe-area-inset-top, 0px);
+      --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+      --mobile-pwa-top-offset: 0px;
+    }
+
+    @media (max-width: 900px) and (display-mode: standalone) {
+      :root {
+        --mobile-pwa-top-offset: 44px;
+      }
+    }
+  </style>
   <title>${title}</title>`;
 }
 
 function renderComicReaderShell({ title, backUrl, pageLabel, toolbarShown, toolbarPinned, zoom, spread, debug }) {
   const overlayFontSize = Math.max(128, Math.min(360, 240));
+  const safeAreaTop = 'var(--safe-area-top, env(safe-area-inset-top, 0px))';
+  const safeAreaBottom = 'var(--safe-area-bottom, env(safe-area-inset-bottom, 0px))';
+  const mobilePwaTopOffset = 'var(--mobile-pwa-top-offset, 0px)';
+  const readerChromeHeight = toolbarShown ? '36px' : '32px';
+  const viewerTopInset = `calc(${safeAreaTop} + ${mobilePwaTopOffset} + ${readerChromeHeight})`;
+  const viewerBottomInset = `calc(16px + ${safeAreaBottom})`;
   return `
       <div style="display:flex;flex-direction:column;height:100vh;background:#000;overflow:hidden">
-        <div id="toolbar" style="position:fixed;top:0;left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:var(--reader-toolbar-bg);border-bottom:${toolbarShown ? '1px solid var(--reader-toolbar-border)' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};backdrop-filter:blur(12px);">
+        <div id="toolbar" style="position:fixed;top:calc(${safeAreaTop});left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:var(--reader-toolbar-bg);border-bottom:${toolbarShown ? '1px solid var(--reader-toolbar-border)' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};backdrop-filter:blur(12px);">
           ${toolbarShown ? `<a href="${backUrl}" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;">← Back</a>` : ''}
           ${toolbarShown ? `<div style="flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${title}</div>` : ''}
           ${toolbarShown ? `<button data-action="prev" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">◀</button>` : ''}
@@ -78,22 +97,27 @@ function renderComicReaderShell({ title, backUrl, pageLabel, toolbarShown, toolb
           ${toolbarShown ? `<button data-action="pin" style="background:${toolbarPinned ? 'var(--reader-button-active-bg)' : 'var(--reader-button-secondary-bg)'};color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;min-width:28px;">${toolbarPinned ? '📌' : '📍'}</button>` : ''}
         </div>
 
-        <div id="viewer" style="position:relative;flex:1;overflow:${zoom > 100 ? 'auto' : 'hidden'};background:#000;display:flex;align-items:${zoom > 100 ? 'flex-start' : 'center'};justify-content:center;cursor:pointer;min-height:0;">
+        <div id="viewer" style="position:relative;flex:1;overflow:${zoom > 100 ? 'auto' : 'hidden'};background:#000;display:flex;align-items:${zoom > 100 ? 'flex-start' : 'center'};justify-content:center;cursor:pointer;min-height:0;padding:${viewerTopInset} 0 ${viewerBottomInset};">
           <div id="side-arrow-left" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);opacity:0.42;transition:opacity 200ms ease;text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&lt;</div>
           <div id="side-arrow-right" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);opacity:0.42;transition:opacity 200ms ease;text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&gt;</div>
-          <div style="display:flex;align-items:center;justify-content:center;min-width:${zoom > 100 ? 'max-content' : '100%'};min-height:${zoom > 100 ? 'max-content' : '100%'};padding:16px;"></div>
+          <div style="display:flex;align-items:center;justify-content:center;min-width:${zoom > 100 ? 'max-content' : '100%'};min-height:${zoom > 100 ? 'max-content' : '100%'};padding:0 16px;"></div>
         </div>
 
         <div id="page-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:9;opacity:0;transition:opacity 500ms ease, background 200ms ease;background:transparent;color:rgba(255,255,255,0.68);text-shadow:0 10px 30px rgba(0,0,0,0.7);font-size:${overlayFontSize}px;font-weight:800;letter-spacing:-0.05em;"></div>
 
-        <div id="zoom-controls" style="position:fixed;right:12px;top:50%;transform:translateY(-50%);z-index:10;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 8px;border-radius:999px;background:var(--reader-chrome-bg);border:1px solid var(--reader-toolbar-border);box-shadow:0 12px 30px rgba(0,0,0,0.35);opacity:0.8;transition:opacity 200ms ease;backdrop-filter:blur(12px);">
+        <div id="zoom-controls" style="position:fixed;right:12px;top:calc(50% + (${safeAreaTop} - ${safeAreaBottom}) / 2);transform:translateY(-50%);z-index:10;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 8px;border-radius:999px;background:var(--reader-chrome-bg);border:1px solid var(--reader-toolbar-border);box-shadow:0 12px 30px rgba(0,0,0,0.35);opacity:0.8;transition:opacity 200ms ease;backdrop-filter:blur(12px);">
           <button id="zoom-in" style="width:30px;height:30px;padding:0;border-radius:999px;background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;cursor:pointer;font-size:16px;line-height:1;">+</button>
           <input id="zoom-range" type="range" min="100" max="300" step="10" value="${zoom}" style="writing-mode:vertical-lr;direction:rtl;width:28px;height:180px;accent-color:var(--reader-range-accent);">
           <div style="min-width:42px;text-align:center;color:var(--reader-text-dim);font-size:11px;">${zoom}%</div>
           <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
         </div>
 
-        ${!toolbarShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid var(--reader-toolbar-border);border-left:1px solid var(--reader-toolbar-border);border-right:1px solid var(--reader-toolbar-border);background:var(--reader-chrome-bg-soft);color:var(--reader-text-dim);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:0.8;backdrop-filter:blur(12px);">▼ menu</button>` : ''}
+        <div id="page-bar" style="position:fixed;left:50%;bottom:calc(10px + ${safeAreaBottom});transform:translateX(-50%);z-index:10;display:flex;align-items:center;gap:10px;width:min(72vw, 820px);padding:8px 12px;border-radius:999px;background:transparent;border:1px solid transparent;opacity:0.18;transition:opacity 200ms ease;pointer-events:auto;">
+          <span style="min-width:70px;text-align:left;color:var(--reader-text-dim);font-size:11px;white-space:nowrap;">${pageLabel}</span>
+          <input id="page-range" type="range" min="0" max="0" step="1" value="0" style="flex:1;height:18px;background:transparent;accent-color:var(--reader-range-accent);">
+        </div>
+
+        ${!toolbarShown ? `<button id="toolbar-toggle" style="position:fixed;top:calc(${safeAreaTop});left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid var(--reader-toolbar-border);border-left:1px solid var(--reader-toolbar-border);border-right:1px solid var(--reader-toolbar-border);background:var(--reader-chrome-bg-soft);color:var(--reader-text-dim);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:0.8;backdrop-filter:blur(12px);">▼ menu</button>` : ''}
       </div>`;
 }
 
@@ -432,7 +456,7 @@ function pageTemplate({ libraries, selectedLibrary, items, currentFolderId, brea
       @media (max-width: 900px) {
         .shell { grid-template-columns: 1fr; }
         .shell-sidebar { display:none; }
-        .shell-main { padding: 18px; }
+        .shell-main { padding: calc(18px + var(--safe-area-top) + var(--mobile-pwa-top-offset)) 18px calc(18px + var(--safe-area-bottom)); }
         .mobile-topbar { display:flex; flex-direction:column; gap:14px; margin-bottom:18px; }
         .mobile-topbar .theme-control { margin:0; }
       }

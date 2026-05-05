@@ -331,8 +331,14 @@
     const toolbarShown = state.toolbarPinned || state.toolbarVisible;
     const toolbarToggleShown = !state.toolbarPinned && !state.toolbarVisible;
     const sideArrowOpacity = state.zoomDimmed ? 0 : 0.42;
+    const safeAreaTop = 'var(--safe-area-top, env(safe-area-inset-top, 0px))';
+    const safeAreaBottom = 'var(--safe-area-bottom, env(safe-area-inset-bottom, 0px))';
+    const mobilePwaTopOffset = 'var(--mobile-pwa-top-offset, 0px)';
+    const readerChromeHeight = toolbarShown ? '36px' : '32px';
+    const viewerTopInset = 'calc(' + safeAreaTop + ' + ' + mobilePwaTopOffset + ' + ' + readerChromeHeight + ')';
+    const viewerBottomInset = 'calc(16px + ' + safeAreaBottom + ')';
     const zoomControlStyle = [
-      'position:fixed', 'right:12px', 'top:50%', 'transform:translateY(-50%)',
+      'position:fixed', 'right:12px', 'top:calc(50% + (' + safeAreaTop + ' - ' + safeAreaBottom + ') / 2)', 'transform:translateY(-50%)',
       'z-index:10', 'display:flex', 'flex-direction:column', 'align-items:center',
       'gap:8px', 'padding:10px 8px', 'border-radius:999px',
       'background:var(--reader-chrome-bg)', 'border:1px solid var(--reader-toolbar-border)',
@@ -343,7 +349,7 @@
     ].join(';');
 
     const pageBarStyle = [
-      'position:fixed', 'left:50%', 'bottom:10px', 'transform:translateX(-50%)',
+      'position:fixed', 'left:50%', 'bottom:calc(10px + ' + safeAreaBottom + ')', 'transform:translateX(-50%)',
       'z-index:10', 'display:flex', 'align-items:center', 'gap:10px',
       'width:min(72vw, 820px)', 'padding:8px 12px', 'border-radius:999px',
       'background:transparent', 'border:1px solid transparent',
@@ -354,7 +360,7 @@
 
     app.innerHTML = `
       <div style="display:flex;flex-direction:column;height:100vh;background:#000;overflow:hidden">
-        <div id="toolbar" style="position:fixed;top:0;left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:var(--reader-toolbar-bg);border-bottom:${toolbarShown ? '1px solid var(--reader-toolbar-border)' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};backdrop-filter:blur(12px);">
+        <div id="toolbar" style="position:fixed;top:calc(${safeAreaTop});left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:var(--reader-toolbar-bg);border-bottom:${toolbarShown ? '1px solid var(--reader-toolbar-border)' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};backdrop-filter:blur(12px);">
           ${toolbarShown ? `<a href="${COMIC.backUrl}" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;">← Back</a>` : ''}
           ${toolbarShown ? `<div style="flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${COMIC.title}</div>` : ''}
           ${toolbarShown ? `<button data-action="prev" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">◀</button>` : ''}
@@ -365,10 +371,10 @@
           ${toolbarShown ? `<button data-action="pin" style="background:${state.toolbarPinned ? 'var(--reader-button-active-bg)' : 'var(--reader-button-secondary-bg)'};color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;min-width:28px;">${state.toolbarPinned ? '📌' : '📍'}</button>` : ''}
         </div>
 
-        <div id="viewer" style="position:relative;flex:1;overflow:${state.zoom > 100 ? 'auto' : 'hidden'};background:#000;display:flex;align-items:${state.zoom > 100 ? 'flex-start' : 'center'};justify-content:center;cursor:pointer;min-height:0;">
+        <div id="viewer" style="position:relative;flex:1;overflow:${state.zoom > 100 ? 'auto' : 'hidden'};background:#000;display:flex;align-items:${state.zoom > 100 ? 'flex-start' : 'center'};justify-content:center;cursor:pointer;min-height:0;padding:${viewerTopInset} 0 ${viewerBottomInset};">
           <div id="side-arrow-left" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);opacity:0.42;transition:opacity 200ms ease;text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&lt;</div>
           <div id="side-arrow-right" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:8;color:rgba(255,255,255,0.42);opacity:0.42;transition:opacity 200ms ease;text-shadow:0 10px 30px rgba(0,0,0,0.72);font-size:min(14vw,88px);font-weight:800;line-height:1;">&gt;</div>
-          <div style="display:flex;align-items:center;justify-content:center;min-width:${state.zoom > 100 ? 'max-content' : '100%'};min-height:${state.zoom > 100 ? 'max-content' : '100%'};padding:16px;">
+          <div style="display:flex;align-items:center;justify-content:center;min-width:${state.zoom > 100 ? 'max-content' : '100%'};min-height:${state.zoom > 100 ? 'max-content' : '100%'};padding:0 16px;">
             ${showSpread ? `
               <div style="display:flex;gap:8px;align-items:center;">
                 ${state.spreadSrcs[0] ? `<img src="${state.spreadSrcs[0]}" style="${cssText(computeImgStyle(state.spreadNaturalSizes[0].w, state.spreadNaturalSizes[0].h))}" draggable="false">` : ''}
@@ -392,7 +398,7 @@
           <input id="page-range" type="range" min="0" max="${Math.max(0, COMIC.totalDisplayPages - 1)}" step="1" value="${state.page}" style="flex:1;height:18px;background:transparent;accent-color:var(--reader-range-accent);">
         </div>
 
-        ${toolbarToggleShown ? `<button id="toolbar-toggle" style="position:fixed;top:0;left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid var(--reader-toolbar-border);border-left:1px solid var(--reader-toolbar-border);border-right:1px solid var(--reader-toolbar-border);background:var(--reader-chrome-bg-soft);color:var(--reader-text-dim);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:${state.zoomDimmed ? 0.36 : 0.8};backdrop-filter:blur(12px);">▼ menu</button>` : ''}
+        ${toolbarToggleShown ? `<button id="toolbar-toggle" style="position:fixed;top:calc(${safeAreaTop});left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid var(--reader-toolbar-border);border-left:1px solid var(--reader-toolbar-border);border-right:1px solid var(--reader-toolbar-border);background:var(--reader-chrome-bg-soft);color:var(--reader-text-dim);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:${state.zoomDimmed ? 0.36 : 0.8};backdrop-filter:blur(12px);">▼ menu</button>` : ''}
       </div>`;
 
     viewerRef = document.getElementById('viewer');
