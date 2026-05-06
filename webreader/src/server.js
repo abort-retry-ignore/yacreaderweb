@@ -118,7 +118,18 @@ function renderLoginPage({ username = '', error = '', next = '/' }) {
         box-shadow: 0 28px 80px rgba(0,0,0,0.45);
         backdrop-filter: blur(20px);
       }
-      .login-kicker { margin: 0 0 10px; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.18em; }
+      .login-brand { display:flex; align-items:center; gap:14px; }
+      .login-brand-icon {
+        width: 64px;
+        height: 64px;
+        flex: 0 0 auto;
+        border-radius: 18px;
+        padding: 10px;
+        background: color-mix(in srgb, var(--bg-card) 72%, rgba(50,255,112,0.18));
+        border: 1px solid var(--border);
+        box-shadow: 0 12px 28px rgba(0,0,0,0.28);
+      }
+      .login-brand-copy { min-width: 0; }
       .login-title { margin: 0; font-size: clamp(34px, 7vw, 52px); line-height: 0.95; }
       .login-copy { margin: 12px 0 0; color: var(--text-dim); line-height: 1.5; }
       .login-form { display: grid; gap: 14px; margin-top: 24px; }
@@ -156,6 +167,8 @@ function renderLoginPage({ username = '', error = '', next = '/' }) {
       .login-note { margin-top: 16px; color: var(--text-dim); font-size: 12px; }
       @media (max-width: 640px) {
         .login-panel { padding: 24px 20px; border-radius: 24px; }
+        .login-brand { align-items:flex-start; }
+        .login-brand-icon { width: 56px; height: 56px; border-radius: 16px; }
       }
     </style>
   </head>
@@ -163,8 +176,13 @@ function renderLoginPage({ username = '', error = '', next = '/' }) {
     <main class="login-shell">
       <div class="login-art" aria-hidden="true"></div>
       <section class="login-panel">
-        <h1 class="login-title">YACReaderWeb</h1>
-        <p class="login-copy">Credentials defined in your compose file</p>
+        <div class="login-brand">
+          <img class="login-brand-icon" src="/icon.svg" alt="YACReaderWeb icon">
+          <div class="login-brand-copy">
+            <h1 class="login-title">YACReaderWeb</h1>
+            <p class="login-copy">Credentials defined in your compose file</p>
+          </div>
+        </div>
         ${errorHtml}
         <form class="login-form" method="post" action="/login">
           <input type="hidden" name="next" value="${escapeHtml(next)}">

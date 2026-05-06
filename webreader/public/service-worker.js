@@ -1,4 +1,4 @@
-const CACHE_NAME = 'yacreaderweb-shell-v1';
+const CACHE_NAME = 'yacreaderweb-shell-v2';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/service-worker.js',
