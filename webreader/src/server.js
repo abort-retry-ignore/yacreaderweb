@@ -131,8 +131,8 @@ function renderLoginPage({ username = '', error = '', next = '/' }) {
         box-shadow: 0 12px 28px rgba(0,0,0,0.28);
       }
       .login-brand-copy { min-width: 0; }
-      .login-title { margin: 0; font-size: clamp(34px, 7vw, 52px); line-height: 0.95; }
-      .login-copy { margin: 12px 0 0; color: var(--text-dim); line-height: 1.5; }
+      .login-title { margin: 0; font-size: clamp(22px, 3.4vw, 30px); line-height: 1.1; }
+      .login-copy { margin: 8px 0 0; color: var(--text-dim); font-size: 13px; line-height: 1.4; }
       .login-form { display: grid; gap: 14px; margin-top: 24px; }
       .login-label { display: grid; gap: 8px; font-size: 13px; color: var(--text-dim); }
       .login-input {
@@ -195,7 +195,6 @@ function renderLoginPage({ username = '', error = '', next = '/' }) {
           </label>
           <button class="login-button" type="submit">Enter Library</button>
         </form>
-        <p class="login-note">Matrix shell outside, neon comic haze behind, no unauthenticated route access.</p>
       </section>
     </main>
   </body>
