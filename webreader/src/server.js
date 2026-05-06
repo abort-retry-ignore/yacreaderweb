@@ -1194,6 +1194,26 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // PWA-essential static assets must be reachable without auth so the login
+  // page itself qualifies as an installable PWA (Edge/Chrome require manifest,
+  // service worker, and icons to all load successfully on the page being
+  // installed).
+  const isPwaPublicAsset =
+    url.pathname === '/manifest.webmanifest' ||
+    url.pathname === '/service-worker.js' ||
+    url.pathname === '/icon.svg' ||
+    url.pathname === '/apple-touch-icon.png' ||
+    url.pathname === '/icon-192.png' ||
+    url.pathname === '/icon-512.png' ||
+    url.pathname === '/maskable-icon-192.png' ||
+    url.pathname === '/maskable-icon-512.png' ||
+    url.pathname.startsWith('/apple-splash/');
+
+  if (isPwaPublicAsset && req.method === 'GET') {
+    const served = await serveStaticAsset(res, url.pathname.slice(1));
+    if (served) return;
+  }
+
   if (!isAuthorized(req)) {
     sendLoginRedirect(req, res);
     return;
@@ -1205,12 +1225,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/manifest.webmanifest' || url.pathname === '/service-worker.js' || url.pathname === '/comic-reader.js' || url.pathname === '/icon.svg' || url.pathname === '/apple-touch-icon.png' || url.pathname === '/icon-192.png' || url.pathname === '/icon-512.png' || url.pathname === '/maskable-icon-192.png' || url.pathname === '/maskable-icon-512.png') {
-    const served = await serveStaticAsset(res, url.pathname.slice(1));
-    if (served) return;
-  }
-
-  if (url.pathname.startsWith('/apple-splash/')) {
+  if (url.pathname === '/comic-reader.js') {
     const served = await serveStaticAsset(res, url.pathname.slice(1));
     if (served) return;
   }
