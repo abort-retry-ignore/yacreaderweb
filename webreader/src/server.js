@@ -14,6 +14,7 @@ const BASIC_AUTH_ENABLED = BASIC_AUTH_USERNAME !== '' && BASIC_AUTH_PASSWORD !==
 const AUTH_COOKIE_NAME = 'webreader_auth';
 const ROOT_FOLDER_ID = '1';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const INLINE_ICON_DATA_URI = 'data:image/svg+xml,' + encodeURIComponent(String.raw`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#08110b"/><path d="M126 170c7-53 45-87 94-87 27 0 54 10 77 29-41 3-73 31-84 75" fill="none" stroke="#635d58" stroke-width="26" stroke-linecap="round"/><path d="M386 170c-7-53-45-87-94-87-27 0-54 10-77 29 41 3 73 31 84 75" fill="none" stroke="#635d58" stroke-width="26" stroke-linecap="round"/><path d="M173 197 119 263 204 249Z" fill="#d9cfbd"/><path d="M339 197 393 263 308 249Z" fill="#d9cfbd"/><ellipse cx="256" cy="286" rx="120" ry="132" fill="#f2ebdc"/><ellipse cx="256" cy="231" rx="92" ry="72" fill="#f2ebdc"/><ellipse cx="205" cy="225" rx="40" ry="56" fill="#d9cfbd"/><ellipse cx="307" cy="225" rx="40" ry="56" fill="#d9cfbd"/><ellipse cx="256" cy="256" rx="100" ry="78" fill="#f2ebdc"/><ellipse cx="256" cy="326" rx="72" ry="57" fill="#e8d9cf"/><ellipse cx="216" cy="271" rx="9" ry="12" fill="#1a1210"/><ellipse cx="296" cy="271" rx="9" ry="12" fill="#1a1210"/><ellipse cx="233" cy="338" rx="11" ry="8" fill="#b8a19d"/><ellipse cx="279" cy="338" rx="11" ry="8" fill="#b8a19d"/><ellipse cx="256" cy="403" rx="98" ry="48" fill="#f2ebdc"/><ellipse cx="201" cy="417" rx="28" ry="40" fill="#d9cfbd"/><ellipse cx="311" cy="417" rx="28" ry="40" fill="#d9cfbd"/></svg>`);
 
 function debugLog(...args) {
   if (DEBUG) console.log(...args);
@@ -177,7 +178,7 @@ function renderLoginPage({ username = '', error = '', next = '/' }) {
       <div class="login-art" aria-hidden="true"></div>
       <section class="login-panel">
         <div class="login-brand">
-          <img class="login-brand-icon" src="/icon.svg" alt="YACReaderWeb icon">
+          <img class="login-brand-icon" src="${INLINE_ICON_DATA_URI}" alt="YACReaderWeb icon">
           <div class="login-brand-copy">
             <h1 class="login-title">YACReaderWeb</h1>
             <p class="login-copy">Credentials defined in your compose file</p>
@@ -322,7 +323,8 @@ function pageHead(title, themeColor = '#08110b') {
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="YACReaderWeb">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="${INLINE_ICON_DATA_URI}" type="image/svg+xml">
+  <link rel="shortcut icon" href="${INLINE_ICON_DATA_URI}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   ${APPLE_SPLASH_LINKS}
   <style>
