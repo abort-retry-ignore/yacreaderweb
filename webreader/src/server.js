@@ -342,7 +342,7 @@ function pageHead(title, themeColor = '#08110b') {
   <title>${title}</title>`;
 }
 
-function renderComicReaderShell({ title, backUrl, pageLabel, toolbarShown, toolbarPinned, zoom, spread, debug }) {
+function renderComicReaderShell({ title, backUrl, pageLabel, toolbarShown, toolbarPinned, zoom, spread, totalDisplayPages = 1, page = 0 }) {
   const overlayFontSize = Math.max(128, Math.min(360, 240));
   const safeAreaTop = 'var(--safe-area-top, env(safe-area-inset-top, 0px))';
   const safeAreaBottom = 'var(--safe-area-bottom, env(safe-area-inset-bottom, 0px))';
@@ -353,13 +353,15 @@ function renderComicReaderShell({ title, backUrl, pageLabel, toolbarShown, toolb
   return `
       <div style="display:flex;flex-direction:column;height:100vh;background:#000;overflow:hidden">
         <div id="toolbar" style="position:fixed;top:calc(${safeAreaTop});left:0;right:0;height:${toolbarShown ? '36px' : '0'};opacity:${toolbarShown ? '1' : '0'};overflow:hidden;z-index:19;transition:height 160ms ease, opacity 200ms ease;background:var(--reader-toolbar-bg);border-bottom:${toolbarShown ? '1px solid var(--reader-toolbar-border)' : 'none'};display:flex;align-items:center;padding:${toolbarShown ? '0 8px' : '0'};gap:8px;font-size:12px;pointer-events:${toolbarShown ? 'auto' : 'none'};backdrop-filter:blur(12px);">
-          ${toolbarShown ? `<a href="${backUrl}" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;">← Back</a>` : ''}
-          ${toolbarShown ? `<div style="flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${title}</div>` : ''}
+          ${toolbarShown ? `<a href="${backUrl}" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;text-decoration:none;display:inline-block;flex-shrink:0;">← Back</a>` : ''}
+          ${toolbarShown ? `<div class="toolbar-title" style="flex:1;min-width:40px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${title}</div>` : ''}
+          ${toolbarShown ? `<input id="page-range" type="range" min="0" max="${Math.max(0, totalDisplayPages - 1)}" step="1" value="${page}" aria-label="Page progress">` : ''}
           ${toolbarShown ? `<button data-action="prev" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">◀</button>` : ''}
-          ${toolbarShown ? `<span style="min-width:90px;text-align:center;color:var(--reader-text-dim);font-size:13px;">${pageLabel}</span>` : ''}
+          ${toolbarShown ? `<label class="page-label"><input id="page-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Current page" value="${page === 0 ? 'Cover' : page}"><span id="page-total"> / ${totalDisplayPages}</span></label>` : ''}
           ${toolbarShown ? `<button data-action="next" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">▶</button>` : ''}
           ${toolbarShown ? `<button data-action="spread" style="background:var(--reader-button-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">${spread ? 'Spread' : 'Single'}</button>` : ''}
           ${toolbarShown ? `<button data-action="fit" style="background:var(--reader-button-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">${zoom > 100 ? 'Fit Width' : 'Fit Screen'}</button>` : ''}
+          ${toolbarShown ? `<button data-action="menu" style="background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">⋯</button>` : ''}
           ${toolbarShown ? `<button data-action="pin" style="background:${toolbarPinned ? 'var(--reader-button-active-bg)' : 'var(--reader-button-secondary-bg)'};color:var(--reader-button-text);border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;min-width:28px;">${toolbarPinned ? '📌' : '📍'}</button>` : ''}
         </div>
 
@@ -378,12 +380,9 @@ function renderComicReaderShell({ title, backUrl, pageLabel, toolbarShown, toolb
           <button id="zoom-out" style="width:30px;height:30px;padding:0;border-radius:999px;background:var(--reader-button-secondary-bg);color:var(--reader-button-text);border:none;cursor:pointer;font-size:16px;line-height:1;">−</button>
         </div>
 
-        <div id="page-bar" style="position:fixed;left:50%;bottom:calc(10px + ${safeAreaBottom});transform:translateX(-50%);z-index:10;display:flex;align-items:center;gap:10px;width:min(72vw, 820px);padding:8px 12px;border-radius:999px;background:transparent;border:1px solid transparent;opacity:0.18;transition:opacity 200ms ease;pointer-events:auto;">
-          <span style="min-width:70px;text-align:left;color:var(--reader-text-dim);font-size:11px;white-space:nowrap;">${pageLabel}</span>
-          <input id="page-range" type="range" min="0" max="0" step="1" value="0" style="flex:1;height:18px;background:transparent;accent-color:var(--reader-range-accent);">
-        </div>
+        ${!toolbarShown ? `<div id="page-range-wrap"><input id="page-range" type="range" min="0" max="${Math.max(0, totalDisplayPages - 1)}" step="1" value="${page}" aria-label="Page progress"></div>` : ''}
 
-        ${!toolbarShown ? `<button id="toolbar-toggle" style="position:fixed;top:calc(${safeAreaTop});left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid var(--reader-toolbar-border);border-left:1px solid var(--reader-toolbar-border);border-right:1px solid var(--reader-toolbar-border);background:var(--reader-chrome-bg-soft);color:var(--reader-text-dim);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:0.8;backdrop-filter:blur(12px);">▼ menu</button>` : ''}
+        ${!toolbarShown ? `<button id="toolbar-toggle" style="position:fixed;top:calc(${safeAreaTop} + ${mobilePwaTopOffset});left:50%;transform:translateX(-50%);min-width:112px;height:32px;padding:0 18px 8px;border:none;border-radius:0 0 14px 14px;border-bottom:1px solid var(--reader-toolbar-border);border-left:1px solid var(--reader-toolbar-border);border-right:1px solid var(--reader-toolbar-border);background:var(--reader-chrome-bg-soft);color:var(--reader-text-dim);z-index:20;font-size:11px;font-weight:500;letter-spacing:0.04em;line-height:1;opacity:0.8;backdrop-filter:blur(12px);">▼ menu</button>` : ''}
       </div>`;
 }
 
@@ -926,15 +925,27 @@ async function renderComicReader(req, res, libraryId, comicId) {
   const zoomParam = urlObj.searchParams.get('zoom');
   const pinParam = urlObj.searchParams.get('pin');
   const resumeParam = urlObj.searchParams.get('resume');
+  const overlayParam = urlObj.searchParams.get('overlay');
+  const animParam = urlObj.searchParams.get('anim');
+  const rtlParam = urlObj.searchParams.get('rtl');
+  const modeParam = urlObj.searchParams.get('mode');
   const requestedPage = parseInt(pageParam || '0', 10) || 0;
   const spreadMode = spreadParam === '1' || spreadParam === 'true';
   const initialToolbarPinned = !(pinParam === '0' || pinParam === 'false');
   const allowResume = !(resumeParam === '0' || resumeParam === 'false');
   const parsedZoomLevel = Number.parseInt(zoomParam || '', 10);
   const initialZoomLevel = Math.max(100, Math.min(Number.isFinite(parsedZoomLevel) ? parsedZoomLevel : 100, 300));
+  const initialOverlay = !(overlayParam === '0' || overlayParam === 'false');
+  const initialAnim = !(animParam === '0' || animParam === 'false');
+  const initialRtl = rtlParam === '1' || rtlParam === 'true';
+  const initialMode = modeParam === 'vertical' ? 'vertical' : 'page';
   const hasExplicitPage = pageParam !== null;
   const hasExplicitSpread = spreadParam !== null;
   const hasExplicitZoom = zoomParam !== null;
+  const hasExplicitOverlay = overlayParam !== null;
+  const hasExplicitAnim = animParam !== null;
+  const hasExplicitRtl = rtlParam !== null;
+  const hasExplicitMode = modeParam !== null;
 
   try {
     const comicInfo = await fetchJson(`/v2/library/${encodeURIComponent(libraryId)}/comic/${encodeURIComponent(comicId)}/fullinfo`, requestId);
@@ -979,6 +990,129 @@ async function renderComicReader(req, res, libraryId, comicId) {
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    @keyframes page-enter-next {
+      from { transform: translateX(14%); opacity: 0; }
+      to { transform: none; opacity: 1; }
+    }
+    @keyframes page-enter-prev {
+      from { transform: translateX(-14%); opacity: 0; }
+      to { transform: none; opacity: 1; }
+    }
+    @keyframes page-exit-next {
+      from { transform: none; opacity: 1; }
+      to { transform: translateX(-14%); opacity: 0; }
+    }
+    @keyframes page-exit-prev {
+      from { transform: none; opacity: 1; }
+      to { transform: translateX(14%); opacity: 0; }
+    }
+    .page-enter-next { animation: page-enter-next 500ms ease both; }
+    .page-enter-prev { animation: page-enter-prev 500ms ease both; }
+    .page-exit-next { animation: page-exit-next 500ms ease both; }
+    .page-exit-prev { animation: page-exit-prev 500ms ease both; }
+    @media (prefers-reduced-motion: reduce) {
+      .page-enter-next, .page-enter-prev, .page-exit-next, .page-exit-prev { animation: none; }
+    }
+    #toolbar #page-range {
+      flex: 1.4;
+      min-width: 80px;
+      height: 16px;
+      accent-color: var(--reader-range-accent);
+    }
+    .page-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      min-width: 86px;
+      color: var(--reader-text-dim);
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    #page-input {
+      width: 3.4em;
+      background: transparent;
+      border: 1px solid transparent;
+      color: inherit;
+      text-align: right;
+      font: inherit;
+      padding: 1px 2px;
+    }
+    #page-input:hover, #page-input:focus {
+      border-color: var(--reader-toolbar-border);
+      border-radius: 4px;
+      outline: none;
+    }
+    #page-range-wrap {
+      position: fixed;
+      top: calc(var(--safe-area-top, env(safe-area-inset-top, 0px)) + var(--mobile-pwa-top-offset, 0px));
+      left: 0;
+      right: 0;
+      z-index: 18;
+      height: 12px;
+      display: flex;
+      align-items: center;
+    }
+    #page-range-wrap #page-range {
+      width: 100%;
+      height: 12px;
+      margin: 0;
+      opacity: 0.78;
+      accent-color: var(--reader-range-accent);
+    }
+    #reader-menu {
+      position: fixed;
+      top: calc(var(--safe-area-top, env(safe-area-inset-top, 0px)) + var(--mobile-pwa-top-offset, 0px) + 40px);
+      right: 8px;
+      z-index: 30;
+      min-width: 228px;
+      padding: 8px;
+      border-radius: 10px;
+      background: var(--reader-toolbar-bg);
+      border: 1px solid var(--reader-toolbar-border);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #reader-menu button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      background: transparent;
+      color: var(--reader-button-text);
+      border: none;
+      border-radius: 6px;
+      padding: 7px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+    #reader-menu button:hover,
+    #reader-menu button.is-active {
+      background: var(--reader-button-secondary-bg);
+    }
+    #reader-menu .menu-label {
+      padding: 8px 8px 2px;
+      color: var(--reader-text-dim);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    #reader-menu .menu-modes {
+      display: flex;
+      gap: 4px;
+    }
+    #reader-menu .menu-modes button {
+      justify-content: center;
+      flex: 1;
+    }
+    .v-page {
+      background: rgba(255,255,255,0.03);
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body class="theme-${defaultTheme}">
@@ -991,6 +1125,7 @@ async function renderComicReader(req, res, libraryId, comicId) {
     zoom: initialZoomLevel,
     spread: spreadMode,
     totalDisplayPages,
+    page: safePage,
     debug: DEBUG,
   })}</div>
   <script>
@@ -1032,11 +1167,19 @@ async function renderComicReader(req, res, libraryId, comicId) {
       initialSpread: spreadMode,
       initialZoom: initialZoomLevel,
       initialToolbarPinned,
+      initialOverlay,
+      initialAnim,
+      initialRtl,
+      initialMode,
       debug: DEBUG,
       allowResume,
       hasExplicitPage,
       hasExplicitSpread,
       hasExplicitZoom,
+      hasExplicitOverlay,
+      hasExplicitAnim,
+      hasExplicitRtl,
+      hasExplicitMode,
     })};
   </script>
   <script src="/comic-reader.js"></script>

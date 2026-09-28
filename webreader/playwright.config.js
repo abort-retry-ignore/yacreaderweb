@@ -7,7 +7,11 @@ module.exports = defineConfig({
   workers: 1,
   use: {
     baseURL: 'http://127.0.0.1:3200',
+    browserName: 'chromium',
     headless: true,
+    launchOptions: {
+      args: ['--headless=new', '--disable-gpu', '--no-sandbox'],
+    },
     serviceWorkers: 'block',
   },
   webServer: [

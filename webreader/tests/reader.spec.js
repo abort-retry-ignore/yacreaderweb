@@ -121,4 +121,76 @@ test.describe('comic reader', () => {
 
     await context.close();
   });
+
+  test('can hide the page number overlay', async ({ page }) => {
+    await page.goto('/libraries/lib-1/comics/comic-1?overlay=0&pin=1', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#viewer img')).toHaveCount(1, { timeout: 5000 });
+
+    await page.locator('[data-action="next"]').click();
+    await expect(page).toHaveURL(/page=1/);
+    await expect(page.locator('#viewer img')).toHaveCount(1, { timeout: 5000 });
+    await expect(page.locator('#loading-ring')).toHaveCount(0);
+    await expect(page.locator('#page-overlay')).toHaveText('');
+  });
+
+  test('zooms with ctrl + wheel instead of the browser', async ({ page }) => {
+    await page.goto('/libraries/lib-1/comics/comic-1?pin=1', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#viewer img')).toHaveCount(1, { timeout: 5000 });
+
+    await page.evaluate(() => {
+      window.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -120,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+
+    await expect(page).toHaveURL(/zoom=110/);
+    const scale = await page.evaluate(() => (window.visualViewport && window.visualViewport.scale) || 1);
+    expect(scale).toBe(1);
+  });
+
+  test('puts the page progress bar in the toolbar', async ({ page }) => {
+    await page.goto('/libraries/lib-1/comics/comic-1?pin=1', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#toolbar #page-range')).toBeVisible();
+    await expect(page.locator('#page-bar')).toHaveCount(0);
+  });
+
+  test('jumps to a typed page number', async ({ page }) => {
+    await page.goto('/libraries/lib-1/comics/comic-1?pin=1', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#viewer img')).toHaveCount(1, { timeout: 5000 });
+
+    const input = page.locator('#page-input');
+    await input.click();
+    await input.fill('2');
+    await input.press('Enter');
+
+    await expect(page).toHaveURL(/page=2/);
+    await expect(page.locator('#viewer img')).toHaveCount(1, { timeout: 5000 });
+    await expect(input).toHaveValue('2');
+  });
+
+  test('reverses click zones when rtl=1', async ({ page }) => {
+    await page.goto('/libraries/lib-1/comics/comic-1?rtl=1&pin=0', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#viewer img')).toHaveCount(1, { timeout: 5000 });
+
+    const viewer = page.locator('#viewer');
+    const box = await viewer.boundingBox();
+    if (!box) throw new Error('Viewer not rendered');
+
+    await page.mouse.click(box.x + box.width * 0.15, box.y + box.height * 0.5);
+    await expect(page).toHaveURL(/page=1/);
+  });
+
+  test('stacks pages in vertical reading mode', async ({ page }) => {
+    await page.goto('/libraries/lib-1/comics/comic-1?mode=vertical&pin=1', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.v-page')).toHaveCount(3);
+    await expect(page.locator('#viewer img')).toHaveCount(3, { timeout: 8000 });
+
+    await page.locator('#viewer').evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect.poll(() => page.url()).toMatch(/page=2/);
+  });
 });
